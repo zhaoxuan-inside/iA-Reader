@@ -85,6 +85,12 @@ HTML_PAGE = """<!DOCTYPE html>
       color: var(--text-secondary);
       user-select: none;
       z-index: 10;
+      transition: opacity 0.3s ease, margin-top 0.3s ease;
+    }
+    header.fade-out {
+      opacity: 0;
+      margin-top: -44px;
+      pointer-events: none;
     }
     .header-btn {
       background: none;
@@ -385,6 +391,27 @@ HTML_PAGE = """<!DOCTYPE html>
         document.querySelectorAll(".paragraph").forEach(el => el.classList.remove("focused"));
       }
     }
+
+    // 沉浸阅读自动隐退顶栏 (iA Writer Immersion)
+    let lastScrollTop = 0;
+    const canvasEl = document.getElementById("canvas");
+    const headerEl = document.querySelector("header");
+
+    canvasEl?.addEventListener("scroll", () => {
+      const st = canvasEl.scrollTop;
+      if (st > 60 && st > lastScrollTop) {
+        headerEl?.classList.add("fade-out");
+      } else {
+        headerEl?.classList.remove("fade-out");
+      }
+      lastScrollTop = st;
+    });
+
+    document.addEventListener("mousemove", (e) => {
+      if (e.clientY < 50) {
+        headerEl?.classList.remove("fade-out");
+      }
+    });
 
     // 快捷键 Esc
     window.addEventListener("keydown", (e) => {
