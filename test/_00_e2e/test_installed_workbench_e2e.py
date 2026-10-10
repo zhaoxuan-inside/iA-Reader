@@ -67,60 +67,55 @@ class TestInstalledWorkbenchE2E(unittest.TestCase):
         self.assertIn("Icon=ai-reader", desktop_content)
         self.assertIn("Exec=/usr/bin/ai_reader", desktop_content)
 
-    def test_02_installed_app_launches_workbench_gui_successfully(self):
-        """验证在安装后的环境下启动主程序（无命令行参数）能成功拉起本地 GUI 工作台并返回页面"""
+    def test_02_installed_app_is_pure_inprocess_native_client(self):
+        """验证安装后的 GUI 工作台为纯进程内原生 IPC 架构，已彻底废除本地 HTTP Server / 端口监听"""
+        workbench_file = TEST_INSTALL_DIR / "usr/lib/ai-reader/gui_workbench.py"
+        self.assertTrue(workbench_file.exists(), "必须安装 gui_workbench.py 原生客户端视窗模块")
+
+        content = workbench_file.read_text(encoding="utf-8")
+
+        # 1. 验证已彻底移除 HTTP Server 与 fetch 接口
+        self.assertNotIn("class WorkbenchHTTPHandler", content, "必须彻底移除本地 HTTP 服务类")
+        self.assertNotIn('fetch("/api/invoke"', content, "必须彻底移除前端 fetch HTTP 调用")
+        self.assertNotIn("http.server", content, "必须彻底剔除 http.server 依赖")
+
+        # 2. 验证已全面接入进程内 Native IPC 消息通道
+        self.assertIn("window.webkit.messageHandlers.nativeEngine", content, "必须接入 WebKit2 原生脚本消息管道")
+        self.assertIn("register_script_message_handler", content, "必须注册原生 nativeEngine 处理程序")
+        self.assertIn("load_html", content, "必须使用本地 load_html 加载页面，不走网络端口")
+
+        # 3. 验证通过子进程调用安装态主程序无头 workbench 正常执行
         app_entry = (TEST_INSTALL_DIR / "usr/lib/ai-reader/ai_reader").resolve()
-        port = 8789
-
-        # 在子进程中拉起安装后的主程序，传入 workbench 子命令（带指定测试端口和禁用弹窗参数）
-        proc = subprocess.Popen(
-            [sys.executable, str(app_entry), "workbench", "--port", str(port), "--no-browser"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+        res_wb = subprocess.run(
+            [sys.executable, str(app_entry), "workbench", "--no-gui"],
+            capture_output=True,
+            text=True,
             cwd=str(app_entry.parent),
-            env=self.test_env
+            env=self.test_env,
+            timeout=5
         )
+        self.assertEqual(res_wb.returncode, 0)
+        self.assertIn("Headless mode", res_wb.stdout)
 
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        time.sleep(1.0)
-        try:
-            # 1. 验证工作台 HTTP 服务已正常就绪
-            url_health = f"http://127.0.0.1:{port}/health"
-            with opener.open(url_health, timeout=3) as resp:
-                self.assertEqual(resp.status, 200)
-                data = json.loads(resp.read().decode("utf-8"))
-                self.assertEqual(data.get("status"), "ok")
-
-            # 2. 验证阅读工作台 HTML 页面正常返回且包含 iA Writer 元素
-            url_home = f"http://127.0.0.1:{port}/"
-            with opener.open(url_home, timeout=3) as resp:
-                self.assertEqual(resp.status, 200)
-                html = resp.read().decode("utf-8")
-                self.assertIn("AI Reader · iA Writer 沉浸工作台", html)
-                self.assertIn("focus-mode", html)
-                self.assertIn("selection-pill", html)
-                self.assertIn("⚡️ 通俗", html)
-
-            # 3. 验证工作台调用六元组 API (/api/invoke) 正常工作
-            url_api = f"http://127.0.0.1:{port}/api/invoke"
-            api_payload = json.dumps({
-                "action": "ai.companion_ask",
-                "payload": {
-                    "book_id": 1,
-                    "template_type": "logic",
-                    "selected_text": "安装后集成测试段落"
-                }
-            }).encode("utf-8")
-            req = urllib.request.Request(url_api, data=api_payload, headers={"Content-Type": "application/json"})
-            with opener.open(req, timeout=3) as resp:
-                self.assertEqual(resp.status, 200)
-                res_data = json.loads(resp.read().decode("utf-8"))
-                self.assertEqual(res_data.get("code"), 0, f"Invoke error response: {res_data}")
-                self.assertIn("response", res_data.get("data", {}))
-
-        finally:
-            proc.terminate()
-            proc.wait(timeout=2)
+        # 4. 验证安装态程序六元组 invoke 原生直接调用工作正常
+        invoke_payload = json.dumps({
+            "book_id": 1,
+            "template_type": "logic",
+            "selected_text": "安装态零HTTP原生调用验证段落"
+        })
+        res_inv = subprocess.run(
+            [sys.executable, str(app_entry), "invoke", "--action", "ai.companion_ask", "--payload", invoke_payload],
+            capture_output=True,
+            text=True,
+            cwd=str(app_entry.parent),
+            env=self.test_env,
+            timeout=5
+        )
+        json_lines = [l.strip() for l in res_inv.stdout.strip().split("\n") if l.strip().startswith("{")]
+        self.assertTrue(bool(json_lines), f"No JSON output found in stdout: {res_inv.stdout}")
+        res_json = json.loads(json_lines[-1])
+        self.assertEqual(res_json.get("code"), 0)
+        self.assertIn("response", res_json.get("data", {}))
 
 
 if __name__ == "__main__":

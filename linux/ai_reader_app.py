@@ -243,9 +243,8 @@ def main():
     p_inv.add_argument("--pretty", action="store_true", help="Pretty-print JSON response")
 
     # workbench / gui
-    p_wb = subparsers.add_parser("workbench", help="Launch interactive iA Writer GUI reading workbench")
-    p_wb.add_argument("--port", type=int, default=8765, help="Port to bind server")
-    p_wb.add_argument("--no-gui", "--no-browser", dest="no_gui", action="store_true", help="Run in headless server mode (do not launch GUI window)")
+    p_wb = subparsers.add_parser("workbench", help="Launch interactive iA Writer native GUI reading workbench")
+    p_wb.add_argument("--no-gui", action="store_true", help="Run in headless mode (do not launch GUI window)")
 
     # 如果系统通过桌面直接传入单个已存在文档路径 (例如从文件管理器双击文件)
     if len(sys.argv) == 2 and os.path.exists(sys.argv[1]) and not sys.argv[1].startswith("-"):
@@ -253,28 +252,28 @@ def main():
         print(f"[*] Opening document in AI Reader: {doc_path}")
         ai_reader_invoke("doc.parse", json.dumps({"file_path": doc_path}))
         try:
-            from linux.gui_workbench import start_workbench_server
+            from linux.gui_workbench import start_workbench
         except ImportError:
-            from gui_workbench import start_workbench_server
-        start_workbench_server(launch_gui=True)
+            from gui_workbench import start_workbench
+        start_workbench(launch_gui=True)
         return
 
     args = parser.parse_args()
     if not args.command:
-        # 桌面图标双击启动或无参数启动：自动拉起沉浸式原生桌面客户端视窗
+        # 桌面图标双击启动或无参数启动：自动拉起沉浸式原生桌面客户端视窗 (Zero-HTTP IPC)
         try:
-            from linux.gui_workbench import start_workbench_server
+            from linux.gui_workbench import start_workbench
         except ImportError:
-            from gui_workbench import start_workbench_server
-        start_workbench_server(launch_gui=True)
+            from gui_workbench import start_workbench
+        start_workbench(launch_gui=True)
         return
 
     def handle_workbench(a):
         try:
-            from linux.gui_workbench import start_workbench_server
+            from linux.gui_workbench import start_workbench
         except ImportError:
-            from gui_workbench import start_workbench_server
-        start_workbench_server(port=a.port, launch_gui=not a.no_gui)
+            from gui_workbench import start_workbench
+        start_workbench(launch_gui=not a.no_gui)
 
     handlers = {
         "parse": handle_parse,

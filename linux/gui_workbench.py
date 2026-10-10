@@ -3,23 +3,19 @@
 """
 linux/gui_workbench.py
 AI Reader - 零依赖本地轻量桌面阅读工作台 (iA Writer 沉浸排版与全交互体验)
-通过 Python 标准库 http.server 提供原生 Web GUI，支持：
+采用 WebKit2 原生 UserContentManager 脚本消息管道与进程内直通，完全零网络 / 零 HTTP / 零端口依赖：
   - iA Writer 极简主义、排版优先（Typography-first）与日夜间模式
   - 定宽 700px 黄金阅读版心与段落级柔和失焦 (Focus Mode)
   - 划词悬浮胶囊 [⚡️通俗 | 🔗逻辑 | 🧐批判 | 📖术语 | 🖍高亮]
   - 380px 侧栏流式认知伴读抽屉、卡片内原位追问与 SQLite 边注原子持久化
-  - 离线/本地 API `/api/invoke` 直通六元组 C-ABI FFI (ai_reader_invoke)
+  - 原生消息管道直通六元组 C-ABI FFI (ai_reader_invoke)
 """
 
 import os
 import sys
 import json
 import time
-import socket
-import webbrowser
-import threading
 from pathlib import Path
-from http.server import HTTPServer, BaseHTTPRequestHandler
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WORKSPACE_ROOT))
@@ -425,13 +421,32 @@ HTML_PAGE = """<!DOCTYPE html>
       }
     });
 
-    async function invokeBackend(action, payload) {
-      const resp = await fetch("/api/invoke", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, payload })
+    // 真正的进程内原生桥接通信 (In-Process Native IPC Bridge, 零 HTTP / 零端口)
+    const __pendingBridgeRequests = {};
+    window.__onNativeBridgeResponse = function(reqId, responseObj) {
+      const resolver = __pendingBridgeRequests[reqId];
+      if (resolver) {
+        delete __pendingBridgeRequests[reqId];
+        resolver(responseObj);
+      }
+    };
+
+    function invokeBackend(action, payload) {
+      return new Promise((resolve) => {
+        const reqId = "req_" + Math.random().toString(36).substring(2, 11) + "_" + Date.now();
+        __pendingBridgeRequests[reqId] = resolve;
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeEngine) {
+          // 直接通过 WebKit2 进程内存消息管道投递给原生内核
+          window.webkit.messageHandlers.nativeEngine.postMessage(JSON.stringify({
+            req_id: reqId,
+            action: action,
+            payload: payload
+          }));
+        } else {
+          console.warn("[NativeBridge] window.webkit.messageHandlers not available, fallback mock");
+          resolve({ code: 0, data: { response: "本地核心引擎未就绪或非原生视窗运行" } });
+        }
       });
-      return await resp.json();
     }
 
     async function triggerAsk(tpl) {
@@ -507,63 +522,16 @@ HTML_PAGE = """<!DOCTYPE html>
 """
 
 
-class WorkbenchHTTPHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ("/", "/index.html"):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(HTML_PAGE.encode("utf-8"))
-        elif self.path == "/health":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"status": "ok", "app": "ai-reader-workbench"}')
-        else:
-            self.send_response(404)
-            self.end_headers()
 
-    def do_POST(self):
-        if self.path == "/api/invoke":
-            content_len = int(self.headers.get("Content-Length", 0))
-            post_body = self.rfile.read(content_len).decode("utf-8")
-            try:
-                req = json.loads(post_body)
-                action = req.get("action", "")
-                payload = req.get("payload", {})
-                res_str = ai_reader_invoke(action, json.dumps(payload))
-            except Exception as e:
-                res_str = json.dumps({"code": 50001, "message": str(e), "data": None})
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.end_headers()
-            self.wfile.write(res_str.encode("utf-8"))
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, format, *args):
-        pass  # 静默请求日志，保持终端安静
-
-
-def find_free_port(start_port=8765):
-    port = start_port
-    while port < start_port + 100:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            if s.connect_ex(("127.0.0.1", port)) != 0:
-                return port
-        port += 1
-    return start_port
-
-
-def launch_native_client_window(url):
+def launch_native_client_window():
     """
     启动原生独立桌面客户端视窗 (Gtk 3.0 + WebKit2)
-    摆脱浏览器标签页，提供具备独立标题栏、专属图标与沉浸尺寸的原生桌面客户端。
+    完全零 HTTP / 零端口 / 零网络依赖：
+    采用 WebKit2 原生 UserContentManager 脚本消息通道与 Python 原生内核在内存中直连。
     """
     has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
     if not has_display:
+        print("[!] Headless environment detected (no DISPLAY/WAYLAND_DISPLAY). GUI window cannot be displayed.")
         return False
 
     try:
@@ -594,12 +562,41 @@ def launch_native_client_window(url):
                 except Exception:
                     pass
 
-        # 嵌入 WebKit2 原生视窗控件
-        webview = WebKit2.WebView()
+        # 核心：创建进程内原生脚本消息管理器，替代任何 HTTP 网络层
+        ucm = WebKit2.UserContentManager()
+        ucm.register_script_message_handler("nativeEngine")
+
+        # 实例化 WebKit2 原生视图
+        webview = WebKit2.WebView.new_with_user_content_manager(ucm)
         settings = webview.get_settings()
         settings.set_enable_developer_extras(False)
         settings.set_enable_smooth_scrolling(True)
-        webview.load_uri(url)
+
+        # 处理前端 JavaScript 发送的原生进程内调用请求
+        def on_script_message(manager, js_result):
+            try:
+                js_val = js_result.get_js_value()
+                msg_str = js_val.to_string()
+                data = json.loads(msg_str)
+                req_id = data.get("req_id")
+                action = data.get("action")
+                payload = data.get("payload", {})
+
+                # 进程内直接调用六元组核心引擎，绝不经过网络
+                res_str = ai_reader_invoke(action, json.dumps(payload))
+                res_obj = json.loads(res_str)
+
+                # 将结果直接注入回 WebKit 运行环境的回调函数
+                safe_res_json = json.dumps(res_obj)
+                script = f"window.__onNativeBridgeResponse({json.dumps(req_id)}, {safe_res_json});"
+                GLib.idle_add(lambda: webview.run_javascript(script))
+            except Exception as e:
+                print(f"[NativeBridge] Error handling script message: {e}", file=sys.stderr)
+
+        ucm.connect("script-message-received::nativeEngine", on_script_message)
+
+        # 直接加载 HTML 字符串内容，使用自定义本地协议前缀，无需 HTTP 服务与端口！
+        webview.load_html(HTML_PAGE, "ai-reader://workbench")
 
         # 滚动与布局容器
         scrolled = Gtk.ScrolledWindow()
@@ -609,51 +606,31 @@ def launch_native_client_window(url):
         win.connect("destroy", Gtk.main_quit)
         win.show_all()
 
-        print("[*] Native desktop client window launched successfully.")
+        print("[*] In-process native desktop client window launched (Zero-HTTP / Pure IPC).")
         Gtk.main()
         return True
     except Exception as e:
-        print(f"[!] Native desktop window failed to initialize ({e}), falling back...")
+        print(f"[!] Native desktop window failed to initialize ({e})", file=sys.stderr)
         return False
 
 
-def start_workbench_server(port=None, launch_gui=True, blocking=True):
-    actual_port = port or find_free_port(8765)
-    server = HTTPServer(("127.0.0.1", actual_port), WorkbenchHTTPHandler)
-    url = f"http://127.0.0.1:{actual_port}"
-    print(f"[*] AI Reader Workbench backend ready at: {url}")
-
-    if not blocking:
-        # 非阻塞模式（测试或后台服务使用）
-        t = threading.Thread(target=server.serve_forever, daemon=True)
-        t.start()
-        return server, actual_port
-
-    # 阻塞模式：在子线程中运行 HTTP 服务，主线程承载客户端原生视窗或事件循环
-    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
-    server_thread.start()
-
-    gui_success = False
+def start_workbench(launch_gui=True):
+    """
+    启动本地阅读工作台。
+    默认采用原生单体进程与 Gtk/WebKit2 进程内桥接视窗。
+    """
     if launch_gui:
-        # 优先唤起独立原生桌面视窗客户端
-        gui_success = launch_native_client_window(url)
-        if not gui_success and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
-            # 仅在有显示环境但原生视窗依赖缺失时降级至浏览器辅助打开
-            print("[*] Opening via system browser as fallback...")
-            webbrowser.open(url)
+        success = launch_native_client_window()
+        if not success:
+            print("[*] Running in headless mode. Use CLI commands (ai_reader parse / ask / etc.) for automation.")
+    else:
+        print("[*] Headless mode: no GUI launched.")
 
-    try:
-        if not gui_success:
-            print("[*] Press Ctrl+C to terminate AI Reader server.")
-            while True:
-                time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n[*] Shutting down workbench server.")
-    finally:
-        server.shutdown()
-        server.server_close()
+
+# 保持兼容别名
+start_workbench_server = lambda *args, **kwargs: start_workbench(launch_gui=kwargs.get("launch_gui", True))
 
 
 if __name__ == "__main__":
-    start_workbench_server()
+    start_workbench()
 
