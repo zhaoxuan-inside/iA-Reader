@@ -86,3 +86,32 @@ terms:
     forbidden_aliases: ["response_wrapper", "result_packet"]
     description: "包含 code, message, data, metrics 的通用 FFI 数据传输载荷"
 
+  # 用户界面与交互域 (UI & Interaction Domain)
+  - term: "聚焦伴读模式"
+    en_name: "focus_mode"
+    abbr: "foc_mod"
+    scope: "ui_domain"
+    forbidden_aliases: ["typewriter_mode", "zen_mode"]
+    description: "当前阅读/伴读段落保持 100% 清晰度，上下文段落柔和弱化至 65% 透明度的沉浸阅读状态"
+
+  - term: "划词快速伴读胶囊"
+    en_name: "floating_action_pill"
+    abbr: "flt_pill"
+    scope: "ui_domain"
+    forbidden_aliases: ["selection_popup", "context_bubble"]
+    description: "划选正文后原地悬浮的极简圆角药丸操作栏，直通 4 大认知模板"
+
+  - term: "认知伴读抽屉"
+    en_name: "companion_drawer"
+    abbr: "comp_drw"
+    scope: "ui_domain"
+    forbidden_aliases: ["ai_sidebar", "chat_drawer"]
+    description: "桌面端右侧可折叠的流式认知洞察卡片与追问交互面板"
+
+  - term: "触控半屏底栏"
+    en_name: "bottom_sheet"
+    abbr: "btm_sht"
+    scope: "ui_domain"
+    forbidden_aliases: ["modal_bottom", "sheet_panel"]
+    description: "移动端用于承载伴读流式结果、支持单手下滑关闭的半屏抽屉组件"
+

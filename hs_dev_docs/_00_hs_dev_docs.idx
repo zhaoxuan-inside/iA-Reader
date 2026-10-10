@@ -1,6 +1,6 @@
 {"version": "1.0", "category": "root", "root": "hs_dev_docs"}
 {"id": "domain_project", "title": "项目基础配置与规范域", "path": "_00_project/_00_project.idx", "status": "active", "digest": "e0aa9a25"}
-{"id": "domain_product", "title": "产品需求与规划域", "path": "_01_product_design/_00_product_design.idx", "status": "active", "digest": "b69402ff"}
+{"id": "domain_product", "title": "产品需求与规划域", "path": "_01_product_design/_00_product_design.idx", "status": "active", "digest": "76c99d37"}
 {"id": "domain_tech", "title": "技术选型域", "path": "_02_tech_select/_00_tech_select.idx", "status": "active", "digest": "2487c489"}
 {"id": "domain_arch", "title": "架构设计域", "path": "_03_architecture_design/_00_architecture_design.idx", "status": "active", "digest": "b35f2f20"}
 {"id": "domain_db", "title": "数据库与迁移域", "path": "_04_db_schema/_00_db_schema.idx", "status": "active", "digest": "95a4fbce"}
