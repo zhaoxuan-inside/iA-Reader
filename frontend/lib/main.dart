@@ -558,7 +558,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             return Padding(
                                               padding: const EdgeInsets.only(bottom: 36.0),
                                               child: Column(
-                                                crossAxisAlignment: CrossCrossAlignment.start,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     _currentBookTitle,
@@ -602,7 +602,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                     )
                                                   : null,
                                               child: Column(
-                                                crossAxisAlignment: CrossCrossAlignment.start,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   SelectableText(
                                                     text,

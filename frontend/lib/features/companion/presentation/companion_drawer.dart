@@ -102,7 +102,7 @@ class _CompanionDrawerState extends State<CompanionDrawer> {
         border: Border(left: BorderSide(color: borderColor, width: 1.0)),
       ),
       child: Column(
-        crossAxisAlignment: CrossCrossAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // 头部：模板标签 + 存边注 + 关闭
           Container(
