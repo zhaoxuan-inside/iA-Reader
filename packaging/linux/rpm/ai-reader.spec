@@ -1,5 +1,5 @@
 Name:           ai-reader
-Version:        3.0.0
+Version:        0.0.1
 Release:        1%{?dist}
 Summary:        Headless Core Computation and Document Parsing Engine CLI
 

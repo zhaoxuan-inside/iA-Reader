@@ -1,6 +1,6 @@
 # Maintainer: AI Reader Team <dev@ai-reader.io>
 pkgname=ai-reader
-pkgver=3.0.0
+pkgver=0.0.1
 pkgrel=1
 pkgdesc="Headless Core Computation and Document Parsing Engine CLI"
 arch=('x86_64')

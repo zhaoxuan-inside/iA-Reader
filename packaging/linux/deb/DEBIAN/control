@@ -1,5 +1,5 @@
 Package: ai-reader
-Version: 3.0.0
+Version: 0.0.1
 Section: utils
 Priority: optional
 Architecture: amd64

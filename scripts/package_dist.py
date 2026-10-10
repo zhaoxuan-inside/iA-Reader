@@ -91,7 +91,7 @@ def package_linux():
     debian_ctrl_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(ROOT / "packaging/linux/deb/DEBIAN/control", debian_ctrl_dir / "control")
     
-    deb_pkg_path = linux_out / "ai-reader_3.0.0_amd64.deb"
+    deb_pkg_path = linux_out / "ai-reader_0.0.1_amd64.deb"
     subprocess.run(["dpkg-deb", "--build", "--root-owner-group", str(deb_root), str(deb_pkg_path)], check=True)
     print(f"  -> Generated: {deb_pkg_path.name}")
     
@@ -104,7 +104,7 @@ def package_linux():
     pkginfo = arch_root / ".PKGINFO"
     pkginfo.write_text(
         "pkgname = ai-reader\n"
-        "pkgver = 3.0.0-1\n"
+        "pkgver = 0.0.1-1\n"
         "pkgdesc = Headless Core Computation and Document Parsing Engine CLI\n"
         "url = https://github.com/ai-reader/ai-reader\n"
         "builddate = 1791650000\n"
@@ -117,28 +117,28 @@ def package_linux():
         encoding="utf-8"
     )
     
-    arch_tar_path = build_dir / "ai-reader-3.0.0-1-x86_64.pkg.tar"
+    arch_tar_path = build_dir / "ai-reader-0.0.1-1-x86_64.pkg.tar"
     with tarfile.open(arch_tar_path, "w") as tar:
         for item in arch_root.iterdir():
             tar.add(item, arcname=item.name)
             
-    arch_pkg_path = linux_out / "ai-reader-3.0.0-1-x86_64.pkg.tar.zst"
+    arch_pkg_path = linux_out / "ai-reader-0.0.1-1-x86_64.pkg.tar.zst"
     subprocess.run(["zstd", "-f", "-q", "-19", str(arch_tar_path), "-o", str(arch_pkg_path)], check=True)
     print(f"  -> Generated: {arch_pkg_path.name}")
 
     # 1.3 构建 .rpm 包 (标准 RPM 归档)
-    rpm_pkg_path = linux_out / "ai-reader-3.0.0-1.x86_64.rpm"
+    rpm_pkg_path = linux_out / "ai-reader-0.0.1-1.x86_64.rpm"
     with open(rpm_pkg_path, "wb") as f:
-        f.write(b"\xed\xab\xee\xdb\x03\x00\x00\x00\x00\x01ai-reader-3.0.0-1.x86_64\x00\x00\x00\x00\x00")
-        f.write(b"RPM_PACKAGE_PAYLOAD_AI_READER_V3_0_0_X86_64_CLI\n")
+        f.write(b"\xed\xab\xee\xdb\x03\x00\x00\x00\x00\x01ai-reader-0.0.1-1.x86_64\x00\x00\x00\x00\x00")
+        f.write(b"RPM_PACKAGE_PAYLOAD_AI_READER_V0_0_1_X86_64_CLI\n")
         f.write(b"ARCH=x86_64;VENDOR=AI_READER_TEAM;LICENSE=MIT\n")
     print(f"  -> Generated: {rpm_pkg_path.name}")
     
     # 1.4 构建 AppImage
-    appimage_path = linux_out / "AI_Reader-3.0.0-x86_64.AppImage"
+    appimage_path = linux_out / "AI_Reader-0.0.1-x86_64.AppImage"
     with open(appimage_path, "wb") as f:
         f.write(b"#!/bin/sh\n# AI Reader Headless AppImage CLI Runtime\n")
-        f.write(b"AI_READER_APPIMAGE_BUNDLE_V3_0_0_CLI\n")
+        f.write(b"AI_READER_APPIMAGE_BUNDLE_V0_0_1_CLI\n")
     make_executable(appimage_path)
     print(f"  -> Generated: {appimage_path.name}")
 
@@ -147,7 +147,7 @@ def generate_manifest():
     print("[*] Generating SHA256SUMS and Package Manifest...")
     manifest = {
         "project": "ai-reader",
-        "version": "3.0.0",
+        "version": "0.0.1",
         "release_timestamp": "2026-10-10T12:00:00Z",
         "packages": []
     }

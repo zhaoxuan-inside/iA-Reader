@@ -20,7 +20,7 @@ import subprocess
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
-DEB_PACKAGE = WORKSPACE_ROOT / "output/linux/ai-reader_3.0.0_amd64.deb"
+DEB_PACKAGE = WORKSPACE_ROOT / "output/linux/ai-reader_0.0.1_amd64.deb"
 TEST_INSTALL_DIR = WORKSPACE_ROOT / "test_installed_sandbox"
 
 
