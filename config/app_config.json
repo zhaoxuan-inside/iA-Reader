@@ -1,0 +1,16 @@
+{
+  "app_name": "AI Reader",
+  "version": "1.0.0",
+  "default_font_size": 15.5,
+  "line_height": 1.8,
+  "letter_spacing": -0.15,
+  "theme": "parchment_light",
+  "responsive_breakpoints": {
+    "compact_max_width": 640.0,
+    "medium_max_width": 1024.0
+  },
+  "marginalia_column_width": 280.0,
+  "sidebar_width": 200.0,
+  "enable_haptic_feedback": true,
+  "enable_auto_pilot_highlights": true
+}

@@ -1,0 +1,9 @@
+{
+  "provider": "deepseek",
+  "endpoint": "https://api.deepseek.com/v1",
+  "api_key": "",
+  "model_name": "deepseek-chat",
+  "temperature": 0.7,
+  "max_output_tokens": 2048,
+  "system_prompt": "你是一个专业的全学科智能阅读伴读与学术解析助手。请结合上下文，用严谨、清晰、深刻且易懂的语言对用户划选的文本进行深度解析或回答问题。"
+}

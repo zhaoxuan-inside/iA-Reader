@@ -1,0 +1,14 @@
+profile_name: "default_test_profile"
+version: "1.0.0"
+environment: "testing"
+mock_settings:
+  offline_mode: true
+  simulate_llm_delay_ms: 50
+  enable_error_injection: false
+  llm_mock_response: "【测试伴读解析】这是一个标准测试环境下的离线认知伴读输出，用于验证端侧契约与状态机流转。"
+target_platforms:
+  - windows
+  - linux
+  - macos
+  - android
+  - ios

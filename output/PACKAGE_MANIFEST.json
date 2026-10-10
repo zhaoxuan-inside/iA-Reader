@@ -6,19 +6,19 @@
     {
       "file": "android/ai-reader-v2.0.0-arm64-v8a-release.apk",
       "size_bytes": 1537,
-      "sha256": "9a5de9ad2962164e4ff43529a5d204d697d3ff9673cfd8632b5b58aa2041cb09",
+      "sha256": "3a5784bc1e8504dc274ebf682edfb2708cf11367ac29fc2a8bf2bbea775ed817",
       "platform": "android"
     },
     {
       "file": "android/ai-reader-v2.0.0-universal-release.apk",
       "size_bytes": 1373,
-      "sha256": "74e2282346f75a9a96dd4e12ec5e18d8e77f24a35eb82d09c293450df41c57e0",
+      "sha256": "7173bf27e5d938ebeb99efe8e841e2ce43b3e7111d38fa9d311c6895b2bb7579",
       "platform": "android"
     },
     {
       "file": "ios/ai_reader_v2.0.0.ipa",
       "size_bytes": 1455,
-      "sha256": "16a3971fefce374bf3895e5bdfba631403558f2b734c9fc9addf88a1a11848b8",
+      "sha256": "9015665e90c57a933632d22dfef132c621fe7fd258a5c169a4377c420ccf4bbd",
       "platform": "ios"
     },
     {
@@ -29,8 +29,8 @@
     },
     {
       "file": "linux/ai-reader-2.0.0-1-x86_64.pkg.tar.zst",
-      "size_bytes": 37836,
-      "sha256": "847cc3bad504e126eda1261a390f58028481ee791181caaee7e8308ca38b26bc",
+      "size_bytes": 58929,
+      "sha256": "7879c67004ce527e18a5df1ce346d1563fc6a31548650a3f704ca0acd789d044",
       "platform": "linux"
     },
     {
@@ -41,8 +41,8 @@
     },
     {
       "file": "linux/ai-reader_2.0.0_amd64.deb",
-      "size_bytes": 37764,
-      "sha256": "21e272df611f6e102a7c0ba6cf67943d7495d020e7c8067af970b62b2e033aba",
+      "size_bytes": 58738,
+      "sha256": "2e6496e725371914684fd6cc082ca091a3cfe3e0568b78d6abeb9a915580c909",
       "platform": "linux"
     },
     {
@@ -54,7 +54,7 @@
     {
       "file": "windows/AI_Reader_v2.0.0_Windows_x64_Portable.zip",
       "size_bytes": 1490,
-      "sha256": "2c2d82a53e396befd21fe6670991a208ca68738214275adeb8fa7e4a6ac80b5f",
+      "sha256": "8b5cc9599d516bc027f944522012611496132210884ccdd45e047c3b1ebb17ad",
       "platform": "windows"
     }
   ]
