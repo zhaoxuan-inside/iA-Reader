@@ -1,0 +1,16 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 极简深色哑光基底 (iA Matte Dark) -->
+  <rect width="512" height="512" rx="112" fill="#121214"/>
+  <rect x="1" y="1" width="510" height="510" rx="111" stroke="#27272A" stroke-width="2"/>
+
+  <!-- 象征长文阅读的极简排版横线 (Muted Charcoal) -->
+  <rect x="110" y="180" width="292" height="18" rx="9" fill="#3F3F46"/>
+  <rect x="110" y="230" width="200" height="18" rx="9" fill="#3F3F46"/>
+
+  <!-- iA 标志性电光蓝/天青游标 (Electric Focus Cursor) -->
+  <rect x="322" y="222" width="22" height="34" rx="4" fill="#007AFF"/>
+
+  <!-- 次级段落行 -->
+  <rect x="110" y="280" width="250" height="18" rx="9" fill="#27272A"/>
+  <rect x="110" y="330" width="160" height="18" rx="9" fill="#27272A"/>
+</svg>

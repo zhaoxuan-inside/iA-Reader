@@ -62,6 +62,21 @@ def package_linux():
     launcher.write_text("#!/bin/sh\nexec /usr/lib/ai-reader/ai_reader \"$@\"\n", encoding="utf-8")
     make_executable(launcher)
 
+    # 复制桌面图标与 .desktop 启动器文件
+    apps_dir = build_dir / "usr/share/applications"
+    icons_png_dir = build_dir / "usr/share/icons/hicolor/512x512/apps"
+    icons_svg_dir = build_dir / "usr/share/icons/hicolor/scalable/apps"
+    apps_dir.mkdir(parents=True, exist_ok=True)
+    icons_png_dir.mkdir(parents=True, exist_ok=True)
+    icons_svg_dir.mkdir(parents=True, exist_ok=True)
+
+    if (ROOT / "packaging/linux/ai-reader.desktop").exists():
+        shutil.copy(ROOT / "packaging/linux/ai-reader.desktop", apps_dir / "ai-reader.desktop")
+    if (ROOT / "packaging/icon/app_icon_512.png").exists():
+        shutil.copy(ROOT / "packaging/icon/app_icon_512.png", icons_png_dir / "ai-reader.png")
+    if (ROOT / "packaging/icon/app_icon.svg").exists():
+        shutil.copy(ROOT / "packaging/icon/app_icon.svg", icons_svg_dir / "ai-reader.svg")
+
     # 1.1 构建 .deb 包 (使用 dpkg-deb)
     deb_root = build_dir / "deb_root"
     deb_root.mkdir(parents=True, exist_ok=True)

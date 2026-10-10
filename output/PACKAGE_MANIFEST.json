@@ -11,8 +11,8 @@
     },
     {
       "file": "linux/ai-reader-3.0.0-1-x86_64.pkg.tar.zst",
-      "size_bytes": 48918,
-      "sha256": "26d6e5618f528fdfb8fd946d0a3dc4ad913028a66fe9019b9895684a3bab6f60",
+      "size_bytes": 52980,
+      "sha256": "37de625ea581ee1a88e7d01fd016fa4f867ddfde1a94903163e7df26e24aee64",
       "platform": "linux"
     },
     {
@@ -23,8 +23,8 @@
     },
     {
       "file": "linux/ai-reader_3.0.0_amd64.deb",
-      "size_bytes": 48964,
-      "sha256": "9b86c2965b7e523a014fb2cc147cb678ed1529925451cbd33b568cb009613c80",
+      "size_bytes": 52948,
+      "sha256": "9b6089584f75c890d7d57fd20cf9a04b7be662df7fc64f96641ace7756d19fcf",
       "platform": "linux"
     }
   ]
