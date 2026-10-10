@@ -1,9 +1,9 @@
-b4465c8719aa556506b422b3b5919960639fa09dfff132291cd4d068ddb770e0  android/ai-reader-v1.0.0-arm64-v8a-release.apk
-e6bb0edb9c7edf79529de9e33d31d69415a05f3bb47004f7b56dfebdf66f433d  android/ai-reader-v1.0.0-universal-release.apk
-5e7d11b6afcc56098a2f5ceaedf950b7772dee297b1af74b72d581ff5da6d0eb  ios/ai_reader_v1.0.0.ipa
+0cef337e5c4f6bf6a0a5a7053c77640f14605915a8f61a34b10ad3173a969e8b  android/ai-reader-v1.0.0-arm64-v8a-release.apk
+4044b112343cab4f0ae6e4f6f9e6dd5031d2f234eb3014926cd67e40926c61a1  android/ai-reader-v1.0.0-universal-release.apk
+1cb340f50c99046c05355d22385fb0233b567d8eba81c49bbc78ec9f8c0bac44  ios/ai_reader_v1.0.0.ipa
 cf79fda0e840462d73410033f81404af60a3a2c8bd46cdfca423d75c79fd4f2c  linux/AI_Reader-1.0.0-x86_64.AppImage
-2411a69df465506f72bda3e34fb1c49b27066ac58327e8744ca72865a8f8736b  linux/ai-reader-1.0.0-1-x86_64.pkg.tar.zst
+7efd731114e6bc3d434b661aa9666df8ee46c12711f489507fb256a1e1136bc7  linux/ai-reader-1.0.0-1-x86_64.pkg.tar.zst
 626e9835ac1ef2ce08375a5553ad476bf260de62e0abf0d742e313c2c1804589  linux/ai-reader-1.0.0-1.x86_64.rpm
-b0466854c9eea4cbf1d5a2db961ac72b245b66253b3d0297c0145d00ed973ef5  linux/ai-reader_1.0.2_amd64.deb
+369e010543065b5744dffa0fac7d0157a02f99cf35ebefb5608c0ff622a5f280  linux/ai-reader_1.0.2_amd64.deb
 22d39f53de155998b427de909a0a96bf2b108aa8ea7f10fdf80e8d15b82c68d1  windows/AI_Reader_Setup_v1.0.0.exe
-2bed5d70a634181b3434d9e77b7eef49daff0a5181abe951bd31288c2d07b005  windows/AI_Reader_v1.0.0_Windows_x64_Portable.zip
+0f2e829878209cd2d4b536c3ee806d59d898cee20a42b9167d9ea453af1ac6d1  windows/AI_Reader_v1.0.0_Windows_x64_Portable.zip

@@ -29,6 +29,15 @@ class AiReaderWindow(Gtk.Window):
         self.current_title = "深度学习导论"
         self.selected_text = "Attention Mechanisms have revolutionized sequence modeling in artificial intelligence."
 
+        icon_path = WORKSPACE_ROOT / "linux/ai-reader.svg"
+        if not icon_path.exists():
+            icon_path = Path("/usr/share/icons/hicolor/scalable/apps/ai-reader.svg")
+        if icon_path.exists():
+            try:
+                self.set_icon_from_file(str(icon_path))
+            except Exception:
+                pass
+
         self._setup_ui()
         self.loadBook(1, self.current_title)
 
