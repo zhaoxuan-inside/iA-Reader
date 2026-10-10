@@ -2,25 +2,29 @@
 #include <Python.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 static int g_py_initialized = 0;
 
 static void ensure_python_init(void) {
     if (!g_py_initialized) {
+        dlopen("libpython3.12.so.1.0", RTLD_NOW | RTLD_GLOBAL);
         if (!Py_IsInitialized()) {
             Py_Initialize();
         }
         PyGILState_STATE gstate = PyGILState_Ensure();
         PyRun_SimpleString(
             "import sys, os\n"
-            "for p in [os.getcwd(), '/usr/lib/ai-reader', '/usr/lib/ai-reader/backend']:\n"
+            "cwd = os.getcwd()\n"
+            "for p in [cwd, os.path.dirname(cwd), '/usr/lib/ai-reader', '/usr/lib/ai-reader/backend']:\n"
             "    if os.path.exists(p) and p not in sys.path: sys.path.insert(0, p)\n"
             "try:\n"
             "    from backend.reader_engine import ai_reader_invoke as py_invoke\n"
-            "except Exception:\n"
+            "except Exception as e1:\n"
             "    try:\n"
             "        from reader_engine import ai_reader_invoke as py_invoke\n"
-            "    except Exception:\n"
+            "    except Exception as e2:\n"
+            "        print('[c_bridge] import error:', e1, e2, file=sys.stderr)\n"
             "        py_invoke = None\n"
         );
         g_py_initialized = 1;

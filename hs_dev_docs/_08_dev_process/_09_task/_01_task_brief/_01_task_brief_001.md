@@ -33,3 +33,14 @@
 - **更新时间**：`2026-10-10T11:18:50Z`
 ---
 
+### 任务简述：task_04_flutter_linux_packaging
+- **标题**：完成 Flutter Linux 原生端构建打包与端到端/性能测试
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：安装 Linux 构建依赖，编译原生 Flutter release bundle，更新打包脚本与桌面启动器，并执行 E2E 与性能测试
+- **详情索引**：`_02_task_detail/_01_task_04_flutter_linux_packaging/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_04_flutter_linux_packaging/_00_context_pack.md`
+- **更新时间**：`2026-10-10T13:15:40Z`
+---
+

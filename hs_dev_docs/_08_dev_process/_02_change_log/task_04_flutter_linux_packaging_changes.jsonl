@@ -1,0 +1,5 @@
+{"timestamp": "2026-10-10T12:05:00Z", "task_id": "task_04_flutter_linux_packaging", "action": "CREATE_TASK", "summary": "创建 Flutter Linux 原生端构建打包与测试任务"}
+{"timestamp": "2026-10-10T12:45:00Z", "task_id": "task_04_flutter_linux_packaging", "action": "INSTALL_DEPS", "summary": "安装 clang, ninja-build, libgtk-3-dev 补齐编译链"}
+{"timestamp": "2026-10-10T12:47:00Z", "task_id": "task_04_flutter_linux_packaging", "action": "FLUTTER_BUILD", "summary": "修复 CMakeLists.txt 并构建 Flutter Linux 原生 release bundle"}
+{"timestamp": "2026-10-10T13:14:00Z", "task_id": "task_04_flutter_linux_packaging", "action": "PACKAGE_DIST", "summary": "更新 package_dist.py 产出包含 Flutter bundle 的 6 端安装包"}
+{"timestamp": "2026-10-10T13:15:00Z", "task_id": "task_04_flutter_linux_packaging", "action": "VERIFY_TESTS", "summary": "通过全部 Flutter 单元测试、端到端测试与性能测试，过质量门禁"}

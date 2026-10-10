@@ -246,34 +246,47 @@ def main():
     p_wb = subparsers.add_parser("workbench", help="Launch interactive iA Writer native GUI reading workbench")
     p_wb.add_argument("--no-gui", action="store_true", help="Run in headless mode (do not launch GUI window)")
 
+    def start_ui_workbench(launch_gui=True):
+        if not launch_gui:
+            print("[*] Headless mode: no GUI launched.")
+            return
+        # 优先拉起真正的 Flutter Linux 客户端 (Impeller / iA Writer 沉浸排版)
+        candidates = [
+            APP_DIR / "bundle/ai_reader",
+            APP_DIR.parent / "frontend/build/linux/x64/release/bundle/ai_reader",
+            Path("/usr/lib/ai-reader/bundle/ai_reader"),
+        ]
+        for c in candidates:
+            if c.exists() and os.access(c, os.X_OK):
+                print(f"[*] Launching Flutter Linux native client: {c}")
+                try:
+                    subprocess.run([str(c)])
+                    return
+                except Exception as e:
+                    print(f"[!] Flutter client failed ({e}), falling back...", file=sys.stderr)
+                    break
+        try:
+            from linux.gui_workbench import start_workbench
+        except ImportError:
+            from gui_workbench import start_workbench
+        start_workbench(launch_gui=True)
+
     # 如果系统通过桌面直接传入单个已存在文档路径 (例如从文件管理器双击文件)
     if len(sys.argv) == 2 and os.path.exists(sys.argv[1]) and not sys.argv[1].startswith("-"):
         doc_path = str(Path(sys.argv[1]).resolve())
         print(f"[*] Opening document in AI Reader: {doc_path}")
         ai_reader_invoke("doc.parse", json.dumps({"file_path": doc_path}))
-        try:
-            from linux.gui_workbench import start_workbench
-        except ImportError:
-            from gui_workbench import start_workbench
-        start_workbench(launch_gui=True)
+        start_ui_workbench(launch_gui=True)
         return
 
     args = parser.parse_args()
     if not args.command:
-        # 桌面图标双击启动或无参数启动：自动拉起沉浸式原生桌面客户端视窗 (Zero-HTTP IPC)
-        try:
-            from linux.gui_workbench import start_workbench
-        except ImportError:
-            from gui_workbench import start_workbench
-        start_workbench(launch_gui=True)
+        # 桌面图标双击启动或无参数启动：自动拉起 Flutter 沉浸式原生客户端
+        start_ui_workbench(launch_gui=True)
         return
 
     def handle_workbench(a):
-        try:
-            from linux.gui_workbench import start_workbench
-        except ImportError:
-            from gui_workbench import start_workbench
-        start_workbench(launch_gui=not a.no_gui)
+        start_ui_workbench(launch_gui=not a.no_gui)
 
     handlers = {
         "parse": handle_parse,

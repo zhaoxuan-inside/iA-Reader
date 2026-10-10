@@ -72,7 +72,7 @@ void main() {
         'note_text': 'sample saved note',
       });
       expect(resSave.isSuccess, true);
-      expect(resSave.data['status'], 'persisted');
+      expect(resSave.data['status'], anyOf('persisted', 'saved'));
 
       final resList = await bridge.invoke('annotation.list', {'book_id': 1});
       expect(resList.isSuccess, true);

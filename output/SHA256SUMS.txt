@@ -1,6 +1,6 @@
-6869b7ab6499a5ecb7f6080f609e79eacda8e0250bbe5fa69c2ae3b5a694562a  ai-reader-0.0.1-1-x86_64.pkg.tar.zst
-9065d3c62ce30eaccf4f52f7cb5fbeb6605048ccde2a0163cd294c9317eb9553  ai-reader_0.0.1_amd64.deb
+d7e5b924bf464314c9d15e557ceb535d78ae89f5600b3b0b0b62a7e97887c03d  ai-reader-0.0.1-1-x86_64.pkg.tar.zst
+098da230208f0d55a9006fafcfb4e171d142aca45d098aade737b02a99985835  ai-reader_0.0.1_amd64.deb
 3e540b3bc463bb87091064a1b51d671289c56ef1335b4cb4043b486fc5378ea2  linux/AI_Reader-0.0.1-x86_64.AppImage
-6869b7ab6499a5ecb7f6080f609e79eacda8e0250bbe5fa69c2ae3b5a694562a  linux/ai-reader-0.0.1-1-x86_64.pkg.tar.zst
+d7e5b924bf464314c9d15e557ceb535d78ae89f5600b3b0b0b62a7e97887c03d  linux/ai-reader-0.0.1-1-x86_64.pkg.tar.zst
 f5f81dbafb98b8a2d5e3ed1cbf677df9912c8d72968e359355dac297a5d52305  linux/ai-reader-0.0.1-1.x86_64.rpm
-9065d3c62ce30eaccf4f52f7cb5fbeb6605048ccde2a0163cd294c9317eb9553  linux/ai-reader_0.0.1_amd64.deb
+098da230208f0d55a9006fafcfb4e171d142aca45d098aade737b02a99985835  linux/ai-reader_0.0.1_amd64.deb
