@@ -245,7 +245,7 @@ def main():
     # workbench / gui
     p_wb = subparsers.add_parser("workbench", help="Launch interactive iA Writer GUI reading workbench")
     p_wb.add_argument("--port", type=int, default=8765, help="Port to bind server")
-    p_wb.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
+    p_wb.add_argument("--no-gui", "--no-browser", dest="no_gui", action="store_true", help="Run in headless server mode (do not launch GUI window)")
 
     # 如果系统通过桌面直接传入单个已存在文档路径 (例如从文件管理器双击文件)
     if len(sys.argv) == 2 and os.path.exists(sys.argv[1]) and not sys.argv[1].startswith("-"):
@@ -256,17 +256,17 @@ def main():
             from linux.gui_workbench import start_workbench_server
         except ImportError:
             from gui_workbench import start_workbench_server
-        start_workbench_server(open_browser=True)
+        start_workbench_server(launch_gui=True)
         return
 
     args = parser.parse_args()
     if not args.command:
-        # 桌面图标双击启动或无参数启动：自动拉起沉浸式阅读工作台 GUI
+        # 桌面图标双击启动或无参数启动：自动拉起沉浸式原生桌面客户端视窗
         try:
             from linux.gui_workbench import start_workbench_server
         except ImportError:
             from gui_workbench import start_workbench_server
-        start_workbench_server(open_browser=True)
+        start_workbench_server(launch_gui=True)
         return
 
     def handle_workbench(a):
@@ -274,7 +274,7 @@ def main():
             from linux.gui_workbench import start_workbench_server
         except ImportError:
             from gui_workbench import start_workbench_server
-        start_workbench_server(port=a.port, open_browser=not a.no_browser)
+        start_workbench_server(port=a.port, launch_gui=not a.no_gui)
 
     handlers = {
         "parse": handle_parse,

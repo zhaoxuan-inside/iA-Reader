@@ -530,27 +530,103 @@ def find_free_port(start_port=8765):
     return start_port
 
 
-def start_workbench_server(port=None, open_browser=True, blocking=True):
+def launch_native_client_window(url):
+    """
+    启动原生独立桌面客户端视窗 (Gtk 3.0 + WebKit2)
+    摆脱浏览器标签页，提供具备独立标题栏、专属图标与沉浸尺寸的原生桌面客户端。
+    """
+    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    if not has_display:
+        return False
+
+    try:
+        import gi
+        gi.require_version("Gtk", "3.0")
+        try:
+            gi.require_version("WebKit2", "4.1")
+        except Exception:
+            gi.require_version("WebKit2", "4.0")
+        from gi.repository import Gtk, WebKit2, GLib
+
+        # 构建客户端主窗口
+        win = Gtk.Window(title="AI Reader · 沉浸式认知阅读工作台")
+        win.set_default_size(1260, 840)
+        win.set_position(Gtk.WindowPosition.CENTER)
+
+        # 尝试加载官方应用图标
+        icon_candidates = [
+            "/usr/share/pixmaps/ai-reader.png",
+            "/usr/share/icons/hicolor/512x512/apps/ai-reader.png",
+            str(WORKSPACE_ROOT / "packaging" / "icon" / "app_icon_512.png"),
+        ]
+        for icon_path in icon_candidates:
+            if os.path.exists(icon_path):
+                try:
+                    win.set_icon_from_file(icon_path)
+                    break
+                except Exception:
+                    pass
+
+        # 嵌入 WebKit2 原生视窗控件
+        webview = WebKit2.WebView()
+        settings = webview.get_settings()
+        settings.set_enable_developer_extras(False)
+        settings.set_enable_smooth_scrolling(True)
+        webview.load_uri(url)
+
+        # 滚动与布局容器
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.add(webview)
+        win.add(scrolled)
+
+        win.connect("destroy", Gtk.main_quit)
+        win.show_all()
+
+        print("[*] Native desktop client window launched successfully.")
+        Gtk.main()
+        return True
+    except Exception as e:
+        print(f"[!] Native desktop window failed to initialize ({e}), falling back...")
+        return False
+
+
+def start_workbench_server(port=None, launch_gui=True, blocking=True):
     actual_port = port or find_free_port(8765)
     server = HTTPServer(("127.0.0.1", actual_port), WorkbenchHTTPHandler)
     url = f"http://127.0.0.1:{actual_port}"
-    print(f"[*] AI Reader Workbench started at: {url}")
+    print(f"[*] AI Reader Workbench backend ready at: {url}")
 
-    if open_browser:
-        # 在子线程中唤起系统默认浏览器，打开桌面工作台窗口
-        threading.Thread(target=lambda: (time.sleep(0.5), webbrowser.open(url)), daemon=True).start()
-
-    if blocking:
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            print("\n[*] Shutting down workbench server.")
-            server.server_close()
-    else:
+    if not blocking:
+        # 非阻塞模式（测试或后台服务使用）
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
         return server, actual_port
 
+    # 阻塞模式：在子线程中运行 HTTP 服务，主线程承载客户端原生视窗或事件循环
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+
+    gui_success = False
+    if launch_gui:
+        # 优先唤起独立原生桌面视窗客户端
+        gui_success = launch_native_client_window(url)
+        if not gui_success and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+            # 仅在有显示环境但原生视窗依赖缺失时降级至浏览器辅助打开
+            print("[*] Opening via system browser as fallback...")
+            webbrowser.open(url)
+
+    try:
+        if not gui_success:
+            print("[*] Press Ctrl+C to terminate AI Reader server.")
+            while True:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n[*] Shutting down workbench server.")
+    finally:
+        server.shutdown()
+        server.server_close()
+
 
 if __name__ == "__main__":
     start_workbench_server()
+
