@@ -1,3 +1,4 @@
 {"version": "1.0", "category": "task_archive", "root": "_09_task"}
 {"id": "task_01_backend_core_engine", "title": "实现 Rust 核心计算引擎、SQLite 存储与六元组运行时", "path": "_02_task_detail/_01_task_01_backend_core_engine/_00_task_detail.md", "status": "COMPLETED", "digest": "44767cb5", "updated_at": "2026-10-10T03:58:13Z"}
 {"id": "task_02_flutter_ui", "title": "实现 Flutter 5端跨平台客户端与 iA Writer 极简沉浸式阅读交互", "path": "_02_task_detail/_01_task_02_flutter_ui/_00_task_detail.md", "status": "COMPLETED", "digest": "ab46a232", "updated_at": "2026-10-10T08:47:46Z", "last_note": "任务完成，Flutter客户端与iA Writer UI规范全部落地"}
+{"id": "task_03_flutter_linux_full_design", "title": "实现 Flutter Linux 原生端集成与全量产品设计落地", "path": "_02_task_detail/_01_task_03_flutter_linux_full_design/_00_task_detail.md", "status": "COMPLETED", "digest": "1df169c1", "updated_at": "2026-10-10T11:18:50Z"}

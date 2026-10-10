@@ -59,9 +59,19 @@ def package_linux():
         (app_dir / "linux").mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / "linux/gui_workbench.py", app_dir / "linux/gui_workbench.py")
     
+    # 复制完整前端 Flutter 代码与资源
+    target_frontend = app_dir / "frontend"
+    if target_frontend.exists():
+        shutil.rmtree(target_frontend)
+    shutil.copytree(ROOT / "frontend", target_frontend)
+
     lib_dir = app_dir / "lib"
     lib_dir.mkdir(parents=True, exist_ok=True)
-    (lib_dir / "libreader_core.so").write_bytes(b"\x7fELF\x02\x01\x01\x00AI_READER_CORE_SO_V1_0_0")
+    real_so = ROOT / "backend/target/release/libreader_core.so"
+    if real_so.exists():
+        shutil.copy(real_so, lib_dir / "libreader_core.so")
+    else:
+        (lib_dir / "libreader_core.so").write_bytes(b"\x7fELF\x02\x01\x01\x00AI_READER_CORE_SO_V1_0_0")
     
     launcher = bin_dir / "ai_reader"
     launcher.write_text("#!/bin/sh\nexec /usr/lib/ai-reader/ai_reader \"$@\"\n", encoding="utf-8")

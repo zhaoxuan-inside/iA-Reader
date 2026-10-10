@@ -49,6 +49,19 @@ class _CompanionDrawerState extends State<CompanionDrawer> {
     ));
   }
 
+  @override
+  void didUpdateWidget(covariant CompanionDrawer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialAnalysis != widget.initialAnalysis ||
+        oldWidget.selectedText != widget.selectedText) {
+      _dialogues.clear();
+      _dialogues.add(CompanionDialogueItem(
+        role: 'ai',
+        content: widget.initialAnalysis,
+      ));
+    }
+  }
+
   Future<void> _handleSendFollowUp() async {
     final text = _inputController.text.trim();
     if (text.isEmpty || _isResponding) return;

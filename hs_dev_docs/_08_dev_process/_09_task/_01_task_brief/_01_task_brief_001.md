@@ -22,3 +22,14 @@
 - **更新时间**：`2026-10-10T08:47:46Z`
 ---
 
+### 任务简述：task_03_flutter_linux_full_design
+- **标题**：实现 Flutter Linux 原生端集成与全量产品设计落地
+- **状态**：`COMPLETED`
+- **优先级**：P0
+- **负责人**：agent
+- **核心目标**：全面落实 Linux 采用 Flutter 客户端，补全 Linux runner 与打包分发，并完成全格式真实解析阅读、知识导图与三级拓扑、卡片追问、边注管理等全量产品设计落地
+- **详情索引**：`_02_task_detail/_01_task_03_flutter_linux_full_design/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_03_flutter_linux_full_design/_00_context_pack.md`
+- **更新时间**：`2026-10-10T11:18:50Z`
+---
+
