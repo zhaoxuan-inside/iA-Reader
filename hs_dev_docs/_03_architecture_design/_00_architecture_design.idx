@@ -1,2 +1,3 @@
 {"version": "1.0", "category": "architecture_design", "root": "_03_architecture_design"}
 {"id": "arch_001_system", "title": "AI Reader 全系统架构设计规范", "path": "_01_system_architecture_design.md", "status": "active", "digest": "1a1dfe11"}
+{"id": "arch_002_frontend", "title": "前端与客户端架构设计规范(Flutter)", "path": "_02_frontend_architecture_design.md", "status": "active", "digest": "e3dbf9e1"}

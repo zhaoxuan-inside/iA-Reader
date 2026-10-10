@@ -1,0 +1,24 @@
+name: ai_reader_frontend
+description: AI Reader - 5-Platform Distraction-Free AI Reading Workbench (Flutter)
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.4.0
+  ffi: ^2.1.0
+  path: ^1.8.3
+  flutter_markdown: ^0.6.17
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
