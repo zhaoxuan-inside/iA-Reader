@@ -251,7 +251,8 @@ def main():
         if not launch_gui:
             print("[*] Headless mode: no GUI launched.")
             return
-        # 优先拉起真正的 Flutter Linux 客户端 (Impeller / iA Writer 沉浸排版)
+        # 100% 仅启动真正的 Flutter Linux 原生客户端 (Impeller / iA Writer 沉浸排版)
+        # 严禁任何 WebKit / HTML fallback
         candidates = [
             APP_DIR / "bundle/ai_reader",
             APP_DIR.parent / "frontend/build/linux/x64/release/bundle/ai_reader",
@@ -260,17 +261,13 @@ def main():
         for c in candidates:
             if c.exists() and os.access(c, os.X_OK):
                 print(f"[*] Launching Flutter Linux native client: {c}")
-                try:
-                    subprocess.run([str(c)])
-                    return
-                except Exception as e:
-                    print(f"[!] Flutter client failed ({e}), falling back...", file=sys.stderr)
-                    break
-        try:
-            from linux.gui_workbench import start_workbench
-        except ImportError:
-            from gui_workbench import start_workbench
-        start_workbench(launch_gui=True)
+                res = subprocess.run([str(c)])
+                if res.returncode != 0:
+                    sys.exit(res.returncode)
+                return
+        print("[!] 错误：未找到 Flutter Linux 原生客户端可执行文件 (/usr/lib/ai-reader/bundle/ai_reader)。", file=sys.stderr)
+        print("[!] 必须先构建 Flutter 原生端：flutter build linux --release", file=sys.stderr)
+        sys.exit(1)
 
     # 如果系统通过桌面直接传入单个已存在文档路径 (例如从文件管理器双击文件)
     if len(sys.argv) == 2 and os.path.exists(sys.argv[1]) and not sys.argv[1].startswith("-"):

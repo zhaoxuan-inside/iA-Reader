@@ -125,16 +125,11 @@ def package_linux(version: str):
     shutil.copy(real_bin, target_bin)
     make_executable(target_bin)
 
-    # 复制 backend 运行时模块与 gui_workbench
+    # 复制 backend 运行时模块
     target_backend = app_dir / "backend"
     if target_backend.exists():
         shutil.rmtree(target_backend)
     shutil.copytree(ROOT / "backend", target_backend)
-
-    if (ROOT / "linux/gui_workbench.py").exists():
-        shutil.copy(ROOT / "linux/gui_workbench.py", app_dir / "gui_workbench.py")
-        (app_dir / "linux").mkdir(parents=True, exist_ok=True)
-        shutil.copy(ROOT / "linux/gui_workbench.py", app_dir / "linux/gui_workbench.py")
 
     # 复制完整前端 Flutter 代码与原生 Release Bundle
     target_frontend = app_dir / "frontend"
