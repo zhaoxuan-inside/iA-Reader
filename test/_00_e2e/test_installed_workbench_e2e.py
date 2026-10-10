@@ -18,7 +18,9 @@ import subprocess
 from pathlib import Path
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
-DEB_PACKAGE = WORKSPACE_ROOT / "output/linux/ai-reader_0.0.1_amd64.deb"
+VERSION_FILE = WORKSPACE_ROOT / "VERSION"
+CURRENT_VERSION = VERSION_FILE.read_text(encoding="utf-8").strip() if VERSION_FILE.exists() else "0.0.1"
+DEB_PACKAGE = WORKSPACE_ROOT / f"output/linux/ai-reader_{CURRENT_VERSION}_amd64.deb"
 
 
 class TestInstalledWorkbenchE2E(unittest.TestCase):
@@ -44,7 +46,7 @@ class TestInstalledWorkbenchE2E(unittest.TestCase):
         res = subprocess.run(["dpkg", "-l", "ai-reader"], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, "dpkg -l 必须能查询到已安装的 ai-reader 包")
         self.assertIn("ai-reader", res.stdout)
-        self.assertIn("0.0.1", res.stdout)
+        self.assertIn(CURRENT_VERSION, res.stdout)
 
     def test_02_system_installed_files_integrity(self):
         """验证系统全局路径中已安装的可执行程序、桌面图标与启动脚本"""

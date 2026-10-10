@@ -1,7 +1,7 @@
 name: ai_reader_frontend
 description: AI Reader - 5-Platform Distraction-Free AI Reading Workbench (Flutter)
 publish_to: "none"
-version: 0.0.1+1
+version: 0.0.2+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

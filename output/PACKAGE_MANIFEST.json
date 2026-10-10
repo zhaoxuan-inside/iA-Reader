@@ -1,42 +1,42 @@
 {
   "project": "ai-reader",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "release_timestamp": "2026-10-10T12:00:00Z",
   "packages": [
     {
-      "file": "ai-reader-0.0.1-1-x86_64.pkg.tar.zst",
-      "size_bytes": 39536569,
-      "sha256": "d7e5b924bf464314c9d15e557ceb535d78ae89f5600b3b0b0b62a7e97887c03d",
-      "platform": "ai-reader-0.0.1-1-x86_64.pkg.tar.zst"
+      "file": "ai-reader-0.0.2-1-x86_64.pkg.tar.zst",
+      "size_bytes": 55044918,
+      "sha256": "a5b347693eb0abda8fd70d927b25d8e07ab6e6efd9bfa7061d7fdd18603ada83",
+      "platform": "ai-reader-0.0.2-1-x86_64.pkg.tar.zst"
     },
     {
-      "file": "ai-reader_0.0.1_amd64.deb",
-      "size_bytes": 39501626,
-      "sha256": "098da230208f0d55a9006fafcfb4e171d142aca45d098aade737b02a99985835",
-      "platform": "ai-reader_0.0.1_amd64.deb"
+      "file": "ai-reader_0.0.2_amd64.deb",
+      "size_bytes": 39501596,
+      "sha256": "f8126072bd460ccd3023794907b75077e236230c19001219a64c6526f0e12a17",
+      "platform": "ai-reader_0.0.2_amd64.deb"
     },
     {
-      "file": "linux/AI_Reader-0.0.1-x86_64.AppImage",
-      "size_bytes": 89,
-      "sha256": "3e540b3bc463bb87091064a1b51d671289c56ef1335b4cb4043b486fc5378ea2",
+      "file": "linux/AI_Reader-0.0.2-x86_64.AppImage",
+      "size_bytes": 71,
+      "sha256": "ea2bb8ad6a37339452d37a5b8131dfcc57379448cb9d0cea524a8c6c89d978b7",
       "platform": "linux"
     },
     {
-      "file": "linux/ai-reader-0.0.1-1-x86_64.pkg.tar.zst",
-      "size_bytes": 39536569,
-      "sha256": "d7e5b924bf464314c9d15e557ceb535d78ae89f5600b3b0b0b62a7e97887c03d",
+      "file": "linux/ai-reader-0.0.2-1-x86_64.pkg.tar.zst",
+      "size_bytes": 55044918,
+      "sha256": "a5b347693eb0abda8fd70d927b25d8e07ab6e6efd9bfa7061d7fdd18603ada83",
       "platform": "linux"
     },
     {
-      "file": "linux/ai-reader-0.0.1-1.x86_64.rpm",
-      "size_bytes": 133,
-      "sha256": "f5f81dbafb98b8a2d5e3ed1cbf677df9912c8d72968e359355dac297a5d52305",
+      "file": "linux/ai-reader-0.0.2-1.x86_64.rpm",
+      "size_bytes": 129,
+      "sha256": "7185361089e8b7b6629657c75fee17ff85c0748c65a15a8df13044567f3ed6ed",
       "platform": "linux"
     },
     {
-      "file": "linux/ai-reader_0.0.1_amd64.deb",
-      "size_bytes": 39501626,
-      "sha256": "098da230208f0d55a9006fafcfb4e171d142aca45d098aade737b02a99985835",
+      "file": "linux/ai-reader_0.0.2_amd64.deb",
+      "size_bytes": 39501596,
+      "sha256": "f8126072bd460ccd3023794907b75077e236230c19001219a64c6526f0e12a17",
       "platform": "linux"
     }
   ]
