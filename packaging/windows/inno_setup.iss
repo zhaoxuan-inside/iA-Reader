@@ -1,8 +1,8 @@
 ; Inno Setup Script for AI Reader (Windows .exe Installer)
-; Generates: output/AI_Reader_Setup_v1.0.0.exe
+; Generates: output/AI_Reader_Setup_v2.0.0.exe
 
 #define MyAppName "AI Reader"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "2.0.0"
 #define MyAppPublisher "AI Reader Team"
 #define MyAppURL "https://github.com/ai-reader/ai-reader"
 #define MyAppExeName "ai_reader.exe"

@@ -1,41 +1,46 @@
-# RPM Spec file for AI Reader
 Name:           ai-reader
-Version:        1.0.0
+Version:        2.0.0
 Release:        1%{?dist}
-Summary:        Minimalist Cross-Platform AI Reader with NLP Knowledge Graph and MindMap
+Summary:        Editorial Minimalist AI Reader with iA Writer Margins & NLP Knowledge Graph
+
 License:        MIT
 URL:            https://github.com/ai-reader/ai-reader
 Source0:        %{name}-%{version}.tar.gz
 
-Requires:       gtk3 >= 3.24.0, glibc >= 2.31
+BuildArch:      x86_64
+Requires:       python3, python3-gobject, gtk3
 
 %description
-AI Reader is a Typora-style distraction-free reading application supporting EPUB,
-PDF, Markdown, and TXT with offline classical NLP keyword extraction, co-occurrence
-knowledge graphs, mind maps, and decoupled contextual AI annotations.
+AI Reader is a modern editorial reading workbench supporting EPUB, PDF,
+Markdown, and TXT with iA Writer baseline-aligned marginalia, 4 deep cognitive
+companion templates, offline classical NLP keyword extraction, co-occurrence
+graphs, and structured interactive mind maps.
 
 %prep
 %setup -q
 
 %build
-# Pre-built release binaries copied in build script
 
 %install
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/usr/bin
 mkdir -p $RPM_BUILD_ROOT/usr/lib/ai-reader
 mkdir -p $RPM_BUILD_ROOT/usr/share/applications
+mkdir -p $RPM_BUILD_ROOT/usr/share/icons/hicolor/scalable/apps
 
-cp -r frontend/build/linux/x64/release/bundle/* $RPM_BUILD_ROOT/usr/lib/ai-reader/
-cp backend/target/release/libreader_core.so $RPM_BUILD_ROOT/usr/lib/ai-reader/lib/
+install -m 755 linux/ai_reader_app.py $RPM_BUILD_ROOT/usr/lib/ai-reader/ai_reader
+cp -r backend $RPM_BUILD_ROOT/usr/lib/ai-reader/
 ln -sf /usr/lib/ai-reader/ai_reader $RPM_BUILD_ROOT/usr/bin/ai_reader
-cp packaging/linux/deb/usr/share/applications/ai-reader.desktop $RPM_BUILD_ROOT/usr/share/applications/
+
+install -m 644 packaging/linux/deb/usr/share/applications/ai-reader.desktop $RPM_BUILD_ROOT/usr/share/applications/
+install -m 644 packaging/linux/deb/usr/share/icons/hicolor/scalable/apps/ai-reader.svg $RPM_BUILD_ROOT/usr/share/icons/hicolor/scalable/apps/
 
 %files
 /usr/bin/ai_reader
-/usr/lib/ai-reader/*
+/usr/lib/ai-reader
 /usr/share/applications/ai-reader.desktop
+/usr/share/icons/hicolor/scalable/apps/ai-reader.svg
 
 %changelog
-* Fri Oct 09 2026 AI Reader Team <dev@ai-reader.io> - 1.0.0-1
-- Initial release with Typora-style reader, NLP graph, MindMap and decoupled AI margin annotations.
+* Sat Oct 10 2026 AI Reader Team <dev@ai-reader.io> - 2.0.0-1
+- Release v2.0.0 with Editorial typography, iA Writer marginalia, 4 cognitive templates, NLP graphs and mindmaps.

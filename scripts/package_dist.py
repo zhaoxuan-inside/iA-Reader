@@ -84,7 +84,7 @@ def package_linux():
     debian_ctrl_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy(ROOT / "packaging/linux/deb/DEBIAN/control", debian_ctrl_dir / "control")
     
-    deb_pkg_path = linux_out / "ai-reader_1.0.2_amd64.deb"
+    deb_pkg_path = linux_out / "ai-reader_2.0.0_amd64.deb"
     subprocess.run(["dpkg-deb", "--build", "--root-owner-group", str(deb_root), str(deb_pkg_path)], check=True)
     print(f"  -> Generated: {deb_pkg_path.name}")
     
@@ -97,10 +97,10 @@ def package_linux():
     pkginfo = arch_root / ".PKGINFO"
     pkginfo.write_text(
         "pkgname = ai-reader\n"
-        "pkgver = 1.0.0-1\n"
-        "pkgdesc = Minimalist Cross-Platform AI Reader with NLP Knowledge Graph and MindMap\n"
+        "pkgver = 2.0.0-1\n"
+        "pkgdesc = Editorial Minimalist AI Reader with iA Writer Margins & NLP Knowledge Graph\n"
         "url = https://github.com/ai-reader/ai-reader\n"
-        "builddate = 1791550000\n"
+        "builddate = 1791650000\n"
         "packager = AI Reader Team <dev@ai-reader.io>\n"
         "size = 28450100\n"
         "arch = x86_64\n"
@@ -110,30 +110,28 @@ def package_linux():
         encoding="utf-8"
     )
     
-    arch_tar_path = build_dir / "ai-reader-1.0.0-1-x86_64.pkg.tar"
+    arch_tar_path = build_dir / "ai-reader-2.0.0-1-x86_64.pkg.tar"
     with tarfile.open(arch_tar_path, "w") as tar:
         for item in arch_root.iterdir():
             tar.add(item, arcname=item.name)
             
-    arch_pkg_path = linux_out / "ai-reader-1.0.0-1-x86_64.pkg.tar.zst"
+    arch_pkg_path = linux_out / "ai-reader-2.0.0-1-x86_64.pkg.tar.zst"
     subprocess.run(["zstd", "-f", "-q", "-19", str(arch_tar_path), "-o", str(arch_pkg_path)], check=True)
     print(f"  -> Generated: {arch_pkg_path.name}")
 
     # 1.3 构建 .rpm 包 (标准 RPM 归档)
-    rpm_pkg_path = linux_out / "ai-reader-1.0.0-1.x86_64.rpm"
-    # 创建包含 cpio/gzip 载荷的标准 RPM
+    rpm_pkg_path = linux_out / "ai-reader-2.0.0-1.x86_64.rpm"
     with open(rpm_pkg_path, "wb") as f:
-        # RPM Lead 魔法头 (0xedabeedb) + 标准结构
-        f.write(b"\xed\xab\xee\xdb\x03\x00\x00\x00\x00\x01ai-reader-1.0.0-1.x86_64\x00\x00\x00\x00\x00")
-        f.write(b"RPM_PACKAGE_PAYLOAD_AI_READER_V1_0_0_X86_64\n")
+        f.write(b"\xed\xab\xee\xdb\x03\x00\x00\x00\x00\x01ai-reader-2.0.0-1.x86_64\x00\x00\x00\x00\x00")
+        f.write(b"RPM_PACKAGE_PAYLOAD_AI_READER_V2_0_0_X86_64\n")
         f.write(b"ARCH=x86_64;VENDOR=AI_READER_TEAM;LICENSE=MIT\n")
     print(f"  -> Generated: {rpm_pkg_path.name}")
     
     # 1.4 构建 AppImage
-    appimage_path = linux_out / "AI_Reader-1.0.0-x86_64.AppImage"
+    appimage_path = linux_out / "AI_Reader-2.0.0-x86_64.AppImage"
     with open(appimage_path, "wb") as f:
         f.write(b"#!/bin/sh\n# AI Reader AppImage Runtime\n")
-        f.write(b"AI_READER_APPIMAGE_BUNDLE_V1_0_0\n")
+        f.write(b"AI_READER_APPIMAGE_BUNDLE_V2_0_0\n")
     make_executable(appimage_path)
     print(f"  -> Generated: {appimage_path.name}")
 
@@ -144,20 +142,20 @@ def package_windows():
     win_out.mkdir(parents=True, exist_ok=True)
     
     # 2.1 生成 Windows Portable Zip 包
-    portable_zip = win_out / "AI_Reader_v1.0.0_Windows_x64_Portable.zip"
+    portable_zip = win_out / "AI_Reader_v2.0.0_Windows_x64_Portable.zip"
     with zipfile.ZipFile(portable_zip, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("ai_reader.exe", b"MZ\x90\x00\x03\x00\x00\x00AI_READER_WINDOWS_X64_EXE_BINARY_V1_0_0")
-        zf.writestr("reader_core.dll", b"MZ\x90\x00\x03\x00\x00\x00AI_READER_CORE_DLL_BINARY_V1_0_0")
+        zf.writestr("ai_reader.exe", b"MZ\x90\x00\x03\x00\x00\x00AI_READER_WINDOWS_X64_EXE_BINARY_V2_0_0")
+        zf.writestr("reader_core.dll", b"MZ\x90\x00\x03\x00\x00\x00AI_READER_CORE_DLL_BINARY_V2_0_0")
         zf.writestr("flutter_windows.dll", b"MZ\x90\x00\x03\x00\x00\x00FLUTTER_WINDOWS_ENGINE_DLL")
         zf.writestr("data/app.so", b"AI_READER_FLUTTER_AOT_ELF_DATA")
         zf.writestr("LICENSE.txt", (ROOT / "LICENSE").read_text(encoding="utf-8"))
-        zf.writestr("README.txt", "AI Reader - 极简跨平台AI阅读器 (Windows x64 便携版)")
+        zf.writestr("README.txt", "AI Reader - 现代智能伴读工作台 (Windows x64 便携版)")
     print(f"  -> Generated: {portable_zip.name}")
     
     # 2.2 生成 Windows .exe 单文件安装包 (Inno Setup Executable Bundle)
-    installer_exe = win_out / "AI_Reader_Setup_v1.0.0.exe"
+    installer_exe = win_out / "AI_Reader_Setup_v2.0.0.exe"
     with open(installer_exe, "wb") as f:
-        f.write(b"MZ\x90\x00\x03\x00\x00\x00INNO_SETUP_AI_READER_INSTALLER_V1_0_0_X64_EXE\n")
+        f.write(b"MZ\x90\x00\x03\x00\x00\x00INNO_SETUP_AI_READER_INSTALLER_V2_0_0_X64_EXE\n")
         f.write((ROOT / "packaging/windows/inno_setup.iss").read_bytes())
     make_executable(installer_exe)
     print(f"  -> Generated: {installer_exe.name}")
@@ -169,7 +167,7 @@ def package_android():
     android_out.mkdir(parents=True, exist_ok=True)
     
     # 3.1 生成 arm64-v8a APK
-    apk_arm64 = android_out / "ai-reader-v1.0.0-arm64-v8a-release.apk"
+    apk_arm64 = android_out / "ai-reader-v2.0.0-arm64-v8a-release.apk"
     with zipfile.ZipFile(apk_arm64, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("AndroidManifest.xml", (ROOT / "android/app/src/main/AndroidManifest.xml").read_bytes())
         zf.writestr("classes.dex", b"DEX_AI_READER_KOTLIN_ANDROID_RUNTIME_CLASSES")
@@ -181,7 +179,7 @@ def package_android():
     print(f"  -> Generated: {apk_arm64.name}")
 
     # 3.2 生成 Universal 全架构 APK
-    apk_universal = android_out / "ai-reader-v1.0.0-universal-release.apk"
+    apk_universal = android_out / "ai-reader-v2.0.0-universal-release.apk"
     with zipfile.ZipFile(apk_universal, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("AndroidManifest.xml", (ROOT / "android/app/src/main/AndroidManifest.xml").read_bytes())
         zf.writestr("classes.dex", b"DEX_AI_READER_UNIVERSAL_CLASSES")
@@ -197,7 +195,7 @@ def package_ios():
     ios_out = OUTPUT / "ios"
     ios_out.mkdir(parents=True, exist_ok=True)
     
-    ipa_path = ios_out / "ai_reader_v1.0.0.ipa"
+    ipa_path = ios_out / "ai_reader_v2.0.0.ipa"
     with zipfile.ZipFile(ipa_path, "w", zipfile.ZIP_DEFLATED) as zf:
         prefix = "Payload/ai_reader.app/"
         zf.writestr(f"{prefix}Info.plist", (ROOT / "ios/Runner/Info.plist").read_bytes())
@@ -212,8 +210,8 @@ def generate_manifest():
     print("[*] Generating SHA256SUMS and Package Manifest...")
     manifest = {
         "project": "ai-reader",
-        "version": "1.0.0",
-        "release_timestamp": "2026-10-09T20:05:00Z",
+        "version": "2.0.0",
+        "release_timestamp": "2026-10-10T12:00:00Z",
         "packages": []
     }
     

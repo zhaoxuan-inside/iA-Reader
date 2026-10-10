@@ -1,12 +1,13 @@
 Package: ai-reader
-Version: 1.0.2
+Version: 2.0.0
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: AI Reader Team <dev@ai-reader.io>
 Depends: python3, python3-gi, gir1.2-gtk-3.0, gir1.2-pango-1.0, libgtk-3-0, libc6, libstdc++6
 Homepage: https://github.com/ai-reader/ai-reader
-Description: Minimalist Cross-Platform AI Reader with NLP Knowledge Graph and MindMap
- AI Reader is a Typora-style distraction-free reading application supporting EPUB,
- PDF, Markdown, and TXT with offline classical NLP keyword extraction, co-occurrence
- knowledge graphs, mind maps, and decoupled contextual AI annotations.
+Description: Editorial Minimalist AI Reader with iA Writer Margins & NLP Knowledge Graph
+ AI Reader is a modern editorial reading workbench supporting EPUB, PDF,
+ Markdown, and TXT with iA Writer baseline-aligned marginalia, 4 deep cognitive
+ companion templates, offline classical NLP keyword extraction, co-occurrence
+ graphs, and structured interactive mind maps.

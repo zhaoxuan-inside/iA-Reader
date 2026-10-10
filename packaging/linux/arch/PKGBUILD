@@ -1,35 +1,26 @@
 # Maintainer: AI Reader Team <dev@ai-reader.io>
 pkgname=ai-reader
-pkgver=1.0.0
+pkgver=2.0.0
 pkgrel=1
-pkgdesc="Minimalist Cross-Platform AI Reader with NLP Knowledge Graph and MindMap"
-arch=('x86_64' 'aarch64')
+pkgdesc="Editorial Minimalist AI Reader with iA Writer Margins & NLP Knowledge Graph"
+arch=('x86_64')
 url="https://github.com/ai-reader/ai-reader"
 license=('MIT')
-depends=('gtk3' 'glibc')
-makedepends=('cargo' 'flutter')
-source=("$pkgname-$pkgver.tar.gz")
+depends=('python' 'python-gobject' 'gtk3')
+source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
-build() {
-    cd "$srcdir/$pkgname-$pkgver"
-    # 1. 编译 Rust 核心
-    cargo build --release --manifest-path backend/Cargo.toml
-    # 2. 编译 Flutter Linux
-    cd frontend && flutter build linux --release
-}
-
 package() {
-    cd "$srcdir/$pkgname-$pkgver"
-    
-    install -dm755 "$pkgdir/usr/bin"
-    install -dm755 "$pkgdir/usr/lib/ai-reader"
-    install -dm755 "$pkgdir/usr/share/applications"
+    cd "${srcdir}/${pkgname}-${pkgver}"
+    install -d "${pkgdir}/usr/lib/ai-reader"
+    install -d "${pkgdir}/usr/bin"
+    install -d "${pkgdir}/usr/share/applications"
+    install -d "${pkgdir}/usr/share/icons/hicolor/scalable/apps"
 
-    cp -r frontend/build/linux/x64/release/bundle/* "$pkgdir/usr/lib/ai-reader/"
-    cp backend/target/release/libreader_core.so "$pkgdir/usr/lib/ai-reader/lib/"
-    ln -sf /usr/lib/ai-reader/ai_reader "$pkgdir/usr/bin/ai_reader"
+    install -m755 linux/ai_reader_app.py "${pkgdir}/usr/lib/ai-reader/ai_reader"
+    cp -r backend "${pkgdir}/usr/lib/ai-reader/"
+    ln -sf /usr/lib/ai-reader/ai_reader "${pkgdir}/usr/bin/ai_reader"
 
-    install -Dm644 packaging/linux/deb/usr/share/applications/ai-reader.desktop "$pkgdir/usr/share/applications/ai-reader.desktop"
-    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -m644 packaging/linux/deb/usr/share/applications/ai-reader.desktop "${pkgdir}/usr/share/applications/"
+    install -m644 packaging/linux/deb/usr/share/icons/hicolor/scalable/apps/ai-reader.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/"
 }
