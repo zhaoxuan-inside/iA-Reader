@@ -1,0 +1,6 @@
+# Android Release Signing Key Template (key.properties)
+# Copy to android/key.properties and configure with production keystore
+storePassword=your_keystore_password
+keyPassword=your_key_password
+keyAlias=ai_reader_key
+storeFile=/path/to/upload-keystore.jks

@@ -40,7 +40,136 @@ class StorageManager:
         migration_file = WORKSPACE_ROOT / "hs_dev_docs/_04_db_schema/_01_reader_core/migrations/V1.0.0__init_reader_schema.sql"
         if migration_file.exists():
             sql = migration_file.read_text(encoding="utf-8")
-            conn.executescript(sql)
+        else:
+            sql = """
+            CREATE TABLE IF NOT EXISTS book_meta (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                title TEXT NOT NULL,
+                author TEXT,
+                file_path TEXT NOT NULL UNIQUE,
+                file_hash TEXT NOT NULL,
+                format TEXT NOT NULL,
+                total_pages INTEGER NOT NULL DEFAULT 1,
+                read_progress REAL NOT NULL DEFAULT 0.0,
+                last_read_at TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS book_section (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                section_index INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                parent_id INTEGER,
+                start_page INTEGER NOT NULL DEFAULT 1,
+                end_page INTEGER NOT NULL DEFAULT 1,
+                content TEXT,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS sentence_node (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                section_id INTEGER NOT NULL,
+                sentence_index INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                page_number INTEGER NOT NULL DEFAULT 1,
+                char_offset_start INTEGER NOT NULL DEFAULT 0,
+                char_offset_end INTEGER NOT NULL DEFAULT 0,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE,
+                FOREIGN KEY(section_id) REFERENCES book_section(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS keyword_node (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                word TEXT NOT NULL,
+                level TEXT NOT NULL DEFAULT 'book',
+                tfidf_score REAL NOT NULL DEFAULT 0.0,
+                textrank_score REAL NOT NULL DEFAULT 0.0,
+                frequency INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS keyword_relation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                source_word_id INTEGER NOT NULL,
+                target_word_id INTEGER NOT NULL,
+                co_occurrence_count INTEGER NOT NULL DEFAULT 1,
+                pmi_score REAL NOT NULL DEFAULT 0.0,
+                weight REAL NOT NULL DEFAULT 0.0,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS mindmap_node (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                parent_id INTEGER,
+                title TEXT NOT NULL,
+                section_id INTEGER,
+                level INTEGER NOT NULL DEFAULT 0,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                keywords_json TEXT,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS annotation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                section_id INTEGER,
+                color TEXT NOT NULL DEFAULT '#FFE066',
+                style TEXT NOT NULL DEFAULT 'highlight',
+                note_text TEXT,
+                anchor_json TEXT NOT NULL,
+                ai_response TEXT,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS ai_conversation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                book_id INTEGER NOT NULL,
+                section_id INTEGER,
+                template_type TEXT NOT NULL DEFAULT 'general',
+                prompt TEXT NOT NULL,
+                response TEXT NOT NULL,
+                latency_ms REAL NOT NULL DEFAULT 0.0,
+                FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
+            );
+            """
+        conn.executescript(sql)
         conn.close()
 
     def save_book(self, meta: Dict[str, Any]) -> int:
@@ -663,8 +792,13 @@ _GLOBAL_ENGINE: Optional[ReaderEngineService] = None
 def get_engine() -> ReaderEngineService:
     global _GLOBAL_ENGINE
     if _GLOBAL_ENGINE is None:
-        storage = StorageManager("ai_reader_data.db")
+        db_dir = Path.home() / ".local/share/ai-reader"
+        db_dir.mkdir(parents=True, exist_ok=True)
+        db_path = os.environ.get("AI_READER_DB_PATH", str(db_dir / "ai_reader_data.db"))
+        storage = StorageManager(db_path)
         _GLOBAL_ENGINE = ReaderEngineService(storage)
+        if not storage.list_books():
+            _GLOBAL_ENGINE.doc_parse("sample_reader.epub")
     return _GLOBAL_ENGINE
 
 def execute_action(action: str, payload_json: str) -> Dict[str, Any]:

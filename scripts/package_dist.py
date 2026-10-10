@@ -43,11 +43,17 @@ def package_linux():
     app_dir.mkdir(parents=True, exist_ok=True)
     bin_dir.mkdir(parents=True, exist_ok=True)
     
-    # 复制真实原生 Linux 可执行程序
+    # 复制真实原生 Linux 可执行程序与核心引擎
     real_bin = ROOT / "linux/ai_reader_app.py"
     target_bin = app_dir / "ai_reader"
     shutil.copy(real_bin, target_bin)
     make_executable(target_bin)
+    
+    # 复制 backend 运行时模块
+    target_backend = app_dir / "backend"
+    if target_backend.exists():
+        shutil.rmtree(target_backend)
+    shutil.copytree(ROOT / "backend", target_backend)
     
     lib_dir = app_dir / "lib"
     lib_dir.mkdir(parents=True, exist_ok=True)

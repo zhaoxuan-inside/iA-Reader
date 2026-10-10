@@ -122,7 +122,8 @@ class AiReaderWindow(Gtk.Window):
         self.current_book_id = book_id
         self.current_title = title
         resp = json.loads(ai_reader_invoke("doc.get", json.dumps({"book_id": book_id})))
-        sections = resp.get("data", {}).get("sections", [])
+        data = resp.get("data") or {}
+        sections = data.get("sections", [])
         
         self.outline_store.clear()
         full_text = ""
@@ -154,14 +155,16 @@ class AiReaderWindow(Gtk.Window):
             "prompt": prompt
         }
         resp = json.loads(ai_reader_invoke("ai.companion_ask", json.dumps(payload)))
-        ai_text = resp.get("data", {}).get("response", "伴读完成")
+        data = resp.get("data") or {}
+        ai_text = data.get("response") or resp.get("message", "伴读完成")
         buf = self.card_view.get_buffer()
         buf.set_text(ai_text)
 
     # @PublicAPI
     def toggleGraphView(self):
         resp = json.loads(ai_reader_invoke("nlp.build_graph", json.dumps({"book_id": self.current_book_id})))
-        nodes = resp.get("data", {}).get("nodes", [])
+        data = resp.get("data") or {}
+        nodes = data.get("nodes", [])
         msg = f"概念拓扑已构建！包含 {len(nodes)} 个核心节点。"
         dialog = Gtk.MessageDialog(transient_for=self, flags=0, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
         dialog.run()
@@ -170,7 +173,8 @@ class AiReaderWindow(Gtk.Window):
     # @PublicAPI
     def toggleMindmapView(self):
         resp = json.loads(ai_reader_invoke("mindmap.generate", json.dumps({"book_id": self.current_book_id})))
-        nodes = resp.get("data", {}).get("nodes", [])
+        data = resp.get("data") or {}
+        nodes = data.get("nodes", [])
         msg = f"思维导图已生成！共 {len(nodes)} 个结构分支。"
         dialog = Gtk.MessageDialog(transient_for=self, flags=0, message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, text=msg)
         dialog.run()

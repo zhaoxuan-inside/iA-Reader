@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Typora 极简高雅墨黑与纯净背景 (Distraction-Free Minimalist Monoline) -->
+  <rect width="512" height="512" rx="112" ry="112" fill="#FAF9F6"/>
+  <rect width="504" height="504" x="4" y="4" rx="108" ry="108" fill="none" stroke="#E7E5E4" stroke-width="2"/>
+
+  <!-- ========================================================================= -->
+  <!-- 核心图腾：xAI 原版几何架构 ── 凸书脊/凹书头之书 + 稳固支撑之书立 (I) -->
+  <!-- 设计哲学：去除多余彩光、渐变与厚重阴影，纯粹精密几何与严谨排版呼应 -->
+  <!-- ========================================================================= -->
+  <g id="xAI_Reader_Totem" transform="translate(48, 44) scale(0.90)">
+
+    <!-- 1. 左侧斜书（X-Book）：左侧凸起外书脊，顶部凹陷书头与内页流线 -->
+    <path d="M 0 185
+             C 32 208, 72 208, 104 185
+             L 338 518
+             C 298 495, 258 495, 234 518
+             C 130 320, 70 240, 0 185 Z"
+          fill="#1C1917"/>
+
+    <!-- 凸起外书脊纯白微棱线 -->
+    <path d="M 234 518 C 130 320, 70 240, 0 185"
+          fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+
+    <!-- 左下角折页底座 -->
+    <path d="M 0 518
+             C 34 532, 70 532, 104 518
+             L 156 442
+             C 130 400, 115 385, 104 368 Z"
+          fill="#1C1917"/>
+
+    <!-- 凹陷书头内的平行纸张流线 (精细纯白切线) -->
+    <path d="M 28 196 C 130 330, 190 410, 260 504" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 52 198 C 145 330, 205 410, 280 504" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 76 198 C 160 330, 220 410, 300 504" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- 2. 中上倒扣书（A-Book）：顶部凸起书脊，下方开卷凹陷书头与扇形书页 -->
+    <path d="M 362 0
+             C 392 -24, 438 -24, 466 0
+             L 234 332
+             C 215 290, 195 275, 182 256
+             L 362 0 Z"
+          fill="#1C1917"/>
+
+    <!-- 顶部凸起书脊微弧纯白棱线 -->
+    <path d="M 362 0 C 392 -24, 438 -24, 466 0"
+          fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- 倒扣开卷书头内的扇形书页线条 -->
+    <path d="M 386 18 C 310 140, 260 210, 200 270" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 406 18 C 330 140, 275 210, 212 285" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 426 18 C 350 140, 290 210, 224 300" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M 446 18 C 370 140, 305 210, 236 315" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- 3. 右侧极简书立（Bookend - xAI Polygon 4）：稳固支撑左侧书籍的 L 形金属书立 -->
+    <path d="M 380 160
+             L 466 38
+             L 466 518
+             L 350 518
+             L 350 490
+             L 380 490 Z"
+          fill="#292524"/>
+
+    <!-- 书立 90° 垂直支撑线条 -->
+    <path d="M 380 170 L 380 490 L 350 490" fill="none" stroke="#FFFFFF" stroke-width="3" stroke-linecap="square"/>
+
+    <!-- 书立建筑感减重细切槽 -->
+    <line x1="412" y1="160" x2="412" y2="460" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+    <line x1="438" y1="120" x2="438" y2="460" stroke="#FFFFFF" stroke-width="3" stroke-linecap="round"/>
+
+  </g>
+</svg>
