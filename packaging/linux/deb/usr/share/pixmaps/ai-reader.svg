@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- 1. Apple macOS 深空曜石底座渐变 -->
+    <linearGradient id="appleBaseGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#242426"/>
+      <stop offset="50%" stop-color="#18181A"/>
+      <stop offset="100%" stop-color="#0E0E10"/>
+    </linearGradient>
+
+    <!-- 2. 外边缘微反射高光圈 -->
+    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.04"/>
+    </linearGradient>
+
+    <!-- 3. 书叶纯白光影渐变 (左页) -->
+    <linearGradient id="leftPageGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F4F4F5"/>
+      <stop offset="85%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E4E4E7"/>
+    </linearGradient>
+
+    <!-- 4. 书叶纯白光影渐变 (右页) -->
+    <linearGradient id="rightPageGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E4E4E7"/>
+      <stop offset="15%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F4F4F5"/>
+    </linearGradient>
+
+    <!-- 5. Apple Blue 标志性书签渐变 -->
+    <linearGradient id="appleBlueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0077ED"/>
+      <stop offset="100%" stop-color="#005BB5"/>
+    </linearGradient>
+
+    <!-- 6. AI 认知智火光晕渐变 (Apple Intelligence 虹彩金) -->
+    <linearGradient id="aiSparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFB340"/>
+      <stop offset="50%" stop-color="#FF5E3A"/>
+      <stop offset="100%" stop-color="#E11D48"/>
+    </linearGradient>
+
+    <!-- 7. 概念图谱渐变连线 -->
+    <linearGradient id="graphGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0071E3"/>
+      <stop offset="100%" stop-color="#9333EA"/>
+    </linearGradient>
+
+    <!-- 柔和实体投影 -->
+    <filter id="bookShadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#000000" flood-opacity="0.55"/>
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#000000" flood-opacity="0.30"/>
+    </filter>
+
+    <filter id="sparkGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#FF5E3A" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- ========================================================================= -->
+  <!-- 1. Apple Squircle 外壳底座 (512x512, rx=115)                               -->
+  <!-- ========================================================================= -->
+  <rect x="16" y="16" width="480" height="480" rx="115" ry="115" fill="url(#appleBaseGrad)"/>
+  <rect x="16" y="16" width="480" height="480" rx="115" ry="115" fill="none" stroke="url(#rimGrad)" stroke-width="2.5"/>
+
+  <!-- ========================================================================= -->
+  <!-- 2. 开卷书页 (Open Folio with 3D Depth)                                   -->
+  <!-- ========================================================================= -->
+  <g filter="url(#bookShadow)">
+    <!-- 书本底部页层厚度立体感 (Book Base Thickness) -->
+    <path d="M 100 368
+             C 152 352, 218 360, 256 380
+             C 294 360, 360 352, 412 368
+             C 416 369, 420 365, 420 360
+             L 420 348
+             C 368 332, 302 340, 256 360
+             C 210 340, 144 332, 92 348
+             L 92 360
+             C 92 365, 96 369, 100 368 Z"
+          fill="#52525B"/>
+
+    <!-- 左页 (Left Page) -->
+    <path d="M 256 362
+             C 214 340, 148 330, 96 346
+             C 86 350, 78 342, 78 331
+             L 78 152
+             C 78 141, 88 131, 99 129
+             C 148 118, 216 132, 256 160 Z"
+          fill="url(#leftPageGrad)"/>
+
+    <!-- 右页 (Right Page) -->
+    <path d="M 256 362
+             C 298 340, 364 330, 416 346
+             C 426 350, 434 342, 434 331
+             L 434 152
+             C 434 141, 424 131, 413 129
+             C 364 118, 296 132, 256 160 Z"
+          fill="url(#rightPageGrad)"/>
+
+    <!-- 中间书脊立体阴影折痕 (Spine Ridge) -->
+    <path d="M 256 160 L 256 364" stroke="#D4D4D8" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- 3. 左页：Notion 极简段落块与高亮条 (Notion Block Philosophy)                -->
+  <!-- ========================================================================= -->
+  <g transform="translate(0, 0)">
+    <!-- 标题块占位 -->
+    <rect x="110" y="162" width="76" height="8" rx="4" fill="#18181B"/>
+    <!-- Notion 暖黄高亮引文块 (Yellow Callout Block) -->
+    <rect x="110" y="184" width="118" height="24" rx="5" fill="#FEF08A"/>
+    <rect x="118" y="192" width="96" height="6" rx="3" fill="#854D0E"/>
+    <!-- 常规文本段落条目 -->
+    <rect x="110" y="222" width="118" height="6" rx="3" fill="#71717A"/>
+    <rect x="110" y="238" width="108" height="6" rx="3" fill="#A1A1AA"/>
+    <rect x="110" y="254" width="114" height="6" rx="3" fill="#A1A1AA"/>
+    <rect x="110" y="270" width="86" height="6" rx="3" fill="#D4D4D8"/>
+
+    <!-- Notion 列表微圆点 -->
+    <circle cx="114" cy="296" r="3" fill="#0071E3"/>
+    <rect x="124" y="293" width="98" height="6" rx="3" fill="#71717A"/>
+    <circle cx="114" cy="312" r="3" fill="#0071E3"/>
+    <rect x="124" y="309" width="82" height="6" rx="3" fill="#A1A1AA"/>
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- 4. 右页：Apple 神经知识图谱拓扑网络 (Knowledge Graph Constellation)         -->
+  <!-- ========================================================================= -->
+  <g transform="translate(0, 0)">
+    <!-- 图谱连线 (Neural Links) -->
+    <line x1="300" y1="184" x2="368" y2="172" stroke="url(#graphGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="300" y1="184" x2="336" y2="242" stroke="url(#graphGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="368" y1="172" x2="402" y2="226" stroke="url(#graphGrad)" stroke-width="2" stroke-linecap="round"/>
+    <line x1="336" y1="242" x2="402" y2="226" stroke="url(#graphGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="336" y1="242" x2="312" y2="298" stroke="url(#graphGrad)" stroke-width="2" stroke-linecap="round"/>
+    <line x1="336" y1="242" x2="384" y2="292" stroke="url(#graphGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="384" y1="292" x2="402" y2="226" stroke="url(#graphGrad)" stroke-width="2" stroke-linecap="round"/>
+
+    <!-- 节点 1 (核心枢纽: Apple Blue) -->
+    <circle cx="336" cy="242" r="14" fill="#0071E3"/>
+    <circle cx="336" cy="242" r="7" fill="#FFFFFF"/>
+
+    <!-- 节点 2 (紫色概念节点) -->
+    <circle cx="300" cy="184" r="10" fill="#9333EA"/>
+    <circle cx="300" cy="184" r="4.5" fill="#FFFFFF"/>
+
+    <!-- 节点 3 (天蓝概念节点) -->
+    <circle cx="368" cy="172" r="11" fill="#0284C7"/>
+    <circle cx="368" cy="172" r="5" fill="#FFFFFF"/>
+
+    <!-- 节点 4 (玫红概念节点) -->
+    <circle cx="402" cy="226" r="9" fill="#E11D48"/>
+    <circle cx="402" cy="226" r="4" fill="#FFFFFF"/>
+
+    <!-- 节点 5 (翠绿微节点) -->
+    <circle cx="384" cy="292" r="9" fill="#16A34A"/>
+    <circle cx="384" cy="292" r="4" fill="#FFFFFF"/>
+
+    <!-- 节点 6 (琥珀微节点) -->
+    <circle cx="312" cy="298" r="8" fill="#D97706"/>
+    <circle cx="312" cy="298" r="3.5" fill="#FFFFFF"/>
+  </g>
+
+  <!-- ========================================================================= -->
+  <!-- 5. 中间垂挂的 Apple Blue 书签织带 (Silk Ribbon)                             -->
+  <!-- ========================================================================= -->
+  <path d="M 250 156
+           L 262 156
+           L 262 396
+           L 256 384
+           L 250 396 Z"
+        fill="url(#appleBlueGrad)"/>
+
+  <!-- ========================================================================= -->
+  <!-- 6. 顶部居中：Apple Intelligence 灵动智火四芒星 (The AI Sparkle)             -->
+  <!-- ========================================================================= -->
+  <g transform="translate(256, 108)" filter="url(#sparkGlow)">
+    <!-- 四芒星主体 (Geometric 4-Point Star) -->
+    <path d="M 0 -44
+             C 0 -12, 12 0, 44 0
+             C 12 0, 0 12, 0 44
+             C 0 12, -12 0, -44 0
+             C -12 0, 0 -12, 0 -44 Z"
+          fill="url(#aiSparkGrad)"/>
+
+    <!-- 焦点亮核 (White Core) -->
+    <circle cx="0" cy="0" r="9" fill="#FFFFFF"/>
+  </g>
+
+</svg>

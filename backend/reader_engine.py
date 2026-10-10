@@ -1219,6 +1219,9 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
         return engine.doc_parse(payload.get("file_path", ""))
     elif action == "doc.list":
         return {"books": engine.storage.list_books()}
+    elif action == "doc.delete":
+        engine.storage.delete_book(payload.get("book_id", 0))
+        return {"status": "deleted", "book_id": payload.get("book_id", 0)}
     elif action == "doc.get":
         book_id = payload.get("book_id", 1)
         book = engine.storage.get_book(book_id)
