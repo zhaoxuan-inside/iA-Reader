@@ -18,6 +18,7 @@ import sys
 import os
 import json
 import argparse
+import subprocess
 from pathlib import Path
 
 APP_DIR = Path(__file__).resolve().parent
