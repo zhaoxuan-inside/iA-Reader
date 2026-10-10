@@ -4,6 +4,7 @@ import 'package:ai_reader_frontend/main.dart';
 import 'package:ai_reader_frontend/core/theme/reader_theme.dart';
 import 'package:ai_reader_frontend/features/selection_pill/presentation/floating_action_pill.dart';
 import 'package:ai_reader_frontend/features/reader/presentation/controllers/focus_mode_controller.dart';
+import 'package:ai_reader_frontend/features/library/presentation/library_screen.dart';
 import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
 
 void main() {
@@ -81,13 +82,30 @@ void main() {
     });
   });
 
-  group('Workbench Screen Smoke Test', () {
-    testWidgets('App initializes and renders ReaderWorkbenchScreen', (tester) async {
+  group('Decoupled Architecture & Workbench Screen Tests', () {
+    testWidgets('App initializes and renders ReaderWorkbenchScreen with pure reader chrome', (tester) async {
       await tester.pumpWidget(const AIReaderApp());
       await tester.pumpAndSettle();
 
       expect(find.textContaining('分布式系统高可靠存储与认知解析'), findsWidgets);
       expect(find.textContaining('聚焦 (Cmd+D)'), findsOneWidget);
+
+      // 验证返回书库按钮存在
+      expect(find.byTooltip('返回书库 (文件管理)'), findsOneWidget);
+    });
+
+    testWidgets('Transitions between Pure Reader and LibraryScreen seamlessly', (tester) async {
+      await tester.pumpWidget(const AIReaderApp());
+      await tester.pumpAndSettle();
+
+      // 点击返回书库按钮
+      await tester.tap(find.byTooltip('返回书库 (文件管理)'));
+      await tester.pumpAndSettle();
+
+      // 验证进入独立书库模式
+      expect(find.text('AI Reader 书库'), findsOneWidget);
+      expect(find.text('导入文档'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget); // 搜索框
     });
   });
 }

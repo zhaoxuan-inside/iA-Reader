@@ -44,3 +44,14 @@
 - **更新时间**：`2026-10-10T13:15:40Z`
 ---
 
+### 任务简述：task_05_ia_writer_reader_architecture
+- **标题**：解耦文件库与纯粹阅读并全面对标iA_Writer极简排版
+- **状态**：`COMPLETED`
+- **优先级**：P0
+- **负责人**：agent
+- **核心目标**：将文件库管理与纯粹沉浸阅读彻底解耦，升级iA Writer排版体系与纯净视觉
+- **详情索引**：`_02_task_detail/_01_task_05_ia_writer_reader_architecture/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_05_ia_writer_reader_architecture/_00_context_pack.md`
+- **更新时间**：`2026-10-10T13:37:51Z`
+---
+

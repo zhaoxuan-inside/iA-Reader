@@ -42,8 +42,11 @@ class KeywordTagItem {
   });
 }
 
-/// 左侧 AST 目录与知识导图抽屉 (TocMindmapDrawer)
-/// 严格对标 DESIGN.md 与产品原型：260px 宽度、轻量折叠、双 Tab（目录 AST / 知识导图）
+/// 左侧纯粹目录与导图悬浮抽屉 (TocMindmapDrawer)
+/// 严格对标 iA Writer 设计哲学：
+/// 1. 彻底移除书库切换、文件导入等文件系统管理杂项；
+/// 2. 仅作为“当前文章的导航罗盘”；
+/// 3. 提供极简 260px 宽度、轻量双 Tab（章节 AST / 导图与词云），阅毕即退。
 class TocMindmapDrawer extends StatefulWidget {
   final List<TocSectionItem> sections;
   final List<MindmapNodeItem> mindmapNodes;
@@ -51,8 +54,7 @@ class TocMindmapDrawer extends StatefulWidget {
   final int activeSectionId;
   final Function(TocSectionItem section) onSectionSelected;
   final Function(String keyword) onKeywordSelected;
-  final VoidCallback onOpenFile;
-  final VoidCallback onSwitchBook;
+  final VoidCallback? onClose;
 
   const TocMindmapDrawer({
     Key? key,
@@ -62,8 +64,7 @@ class TocMindmapDrawer extends StatefulWidget {
     required this.activeSectionId,
     required this.onSectionSelected,
     required this.onKeywordSelected,
-    required this.onOpenFile,
-    required this.onSwitchBook,
+    this.onClose,
   }) : super(key: key);
 
   @override
@@ -99,44 +100,49 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
       width: 260.0,
       decoration: BoxDecoration(
         color: surfaceColor,
-        border: Border(right: BorderSide(color: borderColor, width: 1.0)),
+        border: Border(right: BorderSide(color: borderColor, width: 0.5)),
       ),
       child: Column(
         children: [
-          // 顶部操作区：书库切换与导入
+          // 极简顶部标题与收起按钮 (无文件管理杂项)
           Container(
-            height: 48.0,
-            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            height: 44.0,
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: borderColor, width: 1.0)),
+              border: Border(bottom: BorderSide(color: borderColor, width: 0.5)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                TextButton.icon(
-                  onPressed: widget.onSwitchBook,
-                  icon: Icon(Icons.auto_stories_outlined, size: 16.0, color: textSecondary),
-                  label: Text(
-                    '书库列表',
-                    style: TextStyle(fontSize: 12.0, color: textSecondary),
+                Text(
+                  '文章导航',
+                  style: TextStyle(
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                    color: textSecondary,
                   ),
                 ),
-                IconButton(
-                  tooltip: '导入本地文档 (MD/EPUB/TXT/PDF)',
-                  icon: Icon(Icons.file_upload_outlined, size: 18.0, color: accentColor),
-                  onPressed: widget.onOpenFile,
-                ),
+                if (widget.onClose != null)
+                  IconButton(
+                    icon: Icon(Icons.close, size: 16.0, color: textSecondary),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: '收起导航 (Esc / Cmd+\\)',
+                    onPressed: widget.onClose,
+                  ),
               ],
             ),
           ),
 
-          // 双 Tab 栏
+          // 双 Tab 栏 (极简无噪)
           TabBar(
             controller: _tabController,
             labelColor: accentColor,
             unselectedLabelColor: textSecondary,
             indicatorColor: accentColor,
-            indicatorWeight: 2.0,
+            indicatorWeight: 1.5,
+            indicatorSize: TabBarIndicatorSize.tab,
             labelStyle: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600),
             tabs: const [
               Tab(text: '章节 AST 目录'),
@@ -144,7 +150,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
             ],
           ),
 
-          const Divider(height: 1.0),
+          Divider(height: 0.5, color: borderColor),
 
           // 视图内容
           Expanded(
@@ -169,7 +175,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                           border: Border(
                             left: BorderSide(
                               color: isActive ? accentColor : Colors.transparent,
-                              width: 3.0,
+                              width: 2.5,
                             ),
                           ),
                         ),
@@ -179,6 +185,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                             fontSize: 13.0,
                             fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
                             color: isActive ? accentColor : textPrimary,
+                            height: 1.4,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
@@ -193,9 +200,9 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                   padding: const EdgeInsets.all(16.0),
                   children: [
                     Text(
-                      '全书核心拓扑词云',
+                      '核心概念词云',
                       style: TextStyle(
-                        fontSize: 12.0,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w600,
                         color: textSecondary,
                         letterSpacing: 0.5,
@@ -210,7 +217,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                           onTap: () => widget.onKeywordSelected(kw.word),
                           borderRadius: BorderRadius.circular(12.0),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.5),
                             decoration: BoxDecoration(
                               color: isDark ? const Color(0xFF27272A) : const Color(0xFFF3F4F6),
                               borderRadius: BorderRadius.circular(12.0),
@@ -232,7 +239,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                     Text(
                       '结构化知识树 (Mindmap AST)',
                       style: TextStyle(
-                        fontSize: 12.0,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w600,
                         color: textSecondary,
                         letterSpacing: 0.5,
@@ -249,7 +256,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                               node.depth == 0
                                   ? Icons.lens
                                   : (node.depth == 1 ? Icons.subdirectory_arrow_right : Icons.circle_outlined),
-                              size: node.depth == 0 ? 8.0 : 12.0,
+                              size: node.depth == 0 ? 7.0 : 11.0,
                               color: node.depth == 0 ? accentColor : textSecondary,
                             ),
                             const SizedBox(width: 6.0),
@@ -258,7 +265,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                                 node.label,
                                 style: TextStyle(
                                   fontSize: 12.0,
-                                  fontWeight: node.depth == 0 ? FontWeight.bold : FontWeight.normal,
+                                  fontWeight: node.depth == 0 ? FontWeight.w600 : FontWeight.normal,
                                   color: textPrimary,
                                 ),
                               ),

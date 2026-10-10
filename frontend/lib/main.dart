@@ -7,11 +7,13 @@ import 'features/selection_pill/presentation/floating_action_pill.dart';
 import 'features/companion/presentation/companion_drawer.dart';
 import 'features/mobile_sheet/presentation/mobile_companion_sheet.dart';
 import 'features/toc_mindmap/presentation/toc_mindmap_drawer.dart';
+import 'features/library/presentation/library_screen.dart';
 
 void main() {
   runApp(const AIReaderApp());
 }
 
+/// AI Reader 顶层 App
 class AIReaderApp extends StatefulWidget {
   const AIReaderApp({Key? key}) : super(key: key);
 
@@ -21,6 +23,17 @@ class AIReaderApp extends StatefulWidget {
 
 class _AIReaderAppState extends State<AIReaderApp> {
   ThemeMode _themeMode = ThemeMode.dark;
+  late final ReaderEngineBridge _bridge;
+
+  // 视图状态：文件库 (Library) 与沉浸阅读 (Reader) 彻底解耦
+  bool _isLibraryMode = false;
+  int _currentBookId = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    _bridge = ReaderEngineBridge();
+  }
 
   void _toggleTheme() {
     setState(() {
@@ -28,28 +41,66 @@ class _AIReaderAppState extends State<AIReaderApp> {
     });
   }
 
+  void _openBook(int bookId) {
+    setState(() {
+      _currentBookId = bookId;
+      _isLibraryMode = false;
+    });
+  }
+
+  void _backToLibrary() {
+    setState(() {
+      _isLibraryMode = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = _themeMode == ThemeMode.dark;
+
     return MaterialApp(
       title: 'AI Reader',
       debugShowCheckedModeBanner: false,
       theme: ReaderTheme.lightTheme,
       darkTheme: ReaderTheme.darkTheme,
       themeMode: _themeMode,
-      home: ReaderWorkbenchScreen(
-        onToggleTheme: _toggleTheme,
-        isDarkMode: _themeMode == ThemeMode.dark,
-      ),
+      home: _isLibraryMode
+          ? LibraryScreen(
+              bridge: _bridge,
+              onOpenBook: _openBook,
+              onToggleTheme: _toggleTheme,
+              isDarkMode: isDark,
+            )
+          : ReaderWorkbenchScreen(
+              bridge: _bridge,
+              initialBookId: _currentBookId,
+              onBackToLibrary: _backToLibrary,
+              onToggleTheme: _toggleTheme,
+              isDarkMode: isDark,
+            ),
     );
   }
 }
 
+/// 沉浸专注阅读工作台 (ReaderWorkbenchScreen)
+/// 对标 iA Writer 纯粹打字机/长文沉浸哲学：
+/// 1. 内容是一等公民（Typography-first），无文件系统噪音；
+/// 2. 顶栏自动隐退，无框线扰动；
+/// 3. 左侧目录与导图为按需浮现抽屉；
+/// 4. 黄金版心定宽 700px 居中排版，衬线字体温润呼吸；
+/// 5. 选区 Focus Mode 柔和弱化背景。
 class ReaderWorkbenchScreen extends StatefulWidget {
+  final ReaderEngineBridge bridge;
+  final int initialBookId;
+  final VoidCallback onBackToLibrary;
   final VoidCallback onToggleTheme;
   final bool isDarkMode;
 
   const ReaderWorkbenchScreen({
     Key? key,
+    required this.bridge,
+    this.initialBookId = 1,
+    required this.onBackToLibrary,
     required this.onToggleTheme,
     required this.isDarkMode,
   }) : super(key: key);
@@ -60,7 +111,6 @@ class ReaderWorkbenchScreen extends StatefulWidget {
 
 class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   late final FocusModeController _focusController;
-  late final ReaderEngineBridge _bridge;
   final ScrollController _scrollController = ScrollController();
 
   // 顶栏自动淡出隐退控制 (iA Writer Immersion)
@@ -68,7 +118,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   double _lastScrollOffset = 0.0;
 
   // 文档状态
-  int _currentBookId = 1;
+  late int _currentBookId;
   String _currentBookTitle = '分布式系统高可靠存储与认知解析';
   int _activeSectionId = 1;
   List<TocSectionItem> _tocSections = [];
@@ -78,7 +128,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   final Set<String> _highlightedParagraphIds = {};
   final Map<String, List<String>> _paragraphAnnotations = {};
 
-  bool _isTocOpen = true;
+  // 抽屉状态：默认全关闭，给用户最纯净的开屏阅读世界
+  bool _isTocOpen = false;
   String _activeAnalysisText = '';
   CognitiveTemplateType _activeTemplate = CognitiveTemplateType.general;
   Offset? _selectionPosition;
@@ -88,11 +139,20 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   @override
   void initState() {
     super.initState();
+    _currentBookId = widget.initialBookId;
     _focusController = FocusModeController();
-    _bridge = ReaderEngineBridge();
 
     _scrollController.addListener(_handleScroll);
     _loadDocumentData(_currentBookId);
+  }
+
+  @override
+  void didUpdateWidget(covariant ReaderWorkbenchScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialBookId != widget.initialBookId) {
+      _currentBookId = widget.initialBookId;
+      _loadDocumentData(_currentBookId);
+    }
   }
 
   @override
@@ -104,11 +164,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
   void _handleScroll() {
     final offset = _scrollController.offset;
-    if (offset > 60 && offset > _lastScrollOffset) {
+    if (offset > 50 && offset > _lastScrollOffset) {
       if (_isHeaderVisible) {
         setState(() => _isHeaderVisible = false);
       }
-    } else if (offset < _lastScrollOffset || offset <= 30) {
+    } else if (offset < _lastScrollOffset || offset <= 20) {
       if (!_isHeaderVisible) {
         setState(() => _isHeaderVisible = true);
       }
@@ -118,7 +178,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
   Future<void> _loadDocumentData(int bookId) async {
     // 1. 加载文档章节与段落
-    final docRes = await _bridge.invoke('doc.get', {'book_id': bookId});
+    final docRes = await widget.bridge.invoke('doc.get', {'book_id': bookId});
     if (docRes.isSuccess) {
       final docData = docRes.data;
       final sectionsData = (docData['sections'] as List<dynamic>?) ?? [];
@@ -155,7 +215,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     }
 
     // 2. 加载思维导图
-    final mmRes = await _bridge.invoke('mindmap.generate', {'book_id': bookId});
+    final mmRes = await widget.bridge.invoke('mindmap.generate', {'book_id': bookId});
     if (mmRes.isSuccess) {
       final nodes = (mmRes.data['nodes'] as List<dynamic>?) ?? [];
       setState(() {
@@ -171,7 +231,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     }
 
     // 3. 加载核心关键词
-    final kwRes = await _bridge.invoke('nlp.keyword_extract', {'book_id': bookId});
+    final kwRes = await widget.bridge.invoke('nlp.keyword_extract', {'book_id': bookId});
     if (kwRes.isSuccess) {
       final kws = (kwRes.data['keywords'] as List<dynamic>?) ?? [];
       setState(() {
@@ -186,7 +246,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     }
 
     // 4. 加载已有边注
-    final annRes = await _bridge.invoke('annotation.list', {'book_id': bookId});
+    final annRes = await widget.bridge.invoke('annotation.list', {'book_id': bookId});
     if (annRes.isSuccess) {
       final anns = (annRes.data['annotations'] as List<dynamic>?) ?? [];
       final noteMap = <String, List<String>>{};
@@ -202,12 +262,12 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     setState(() {
       _selectionPosition = null;
       _activeTemplate = template;
-      _activeAnalysisText = '正在调用底层六元组计算引擎分析中...';
+      _activeAnalysisText = '正在调用底层认知计算引擎深度解析中...';
     });
     _focusController.focusParagraph(paragraphId, selectedText: text);
     _focusController.setCompanionDrawerOpen(true);
 
-    final res = await _bridge.invoke('ai.companion_ask', {
+    final res = await widget.bridge.invoke('ai.companion_ask', {
       'book_id': _currentBookId,
       'template_type': template.templateKey,
       'selected_text': text,
@@ -227,103 +287,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         _selectionPosition = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('🖍 已添加高亮标记')),
+        const SnackBar(content: Text('🖍 已添加高亮标记'), duration: Duration(milliseconds: 1200)),
       );
     }
-  }
-
-  void _showBookSwitchDialog() async {
-    final res = await _bridge.invoke('doc.list', {});
-    if (!mounted) return;
-    final books = (res.data['books'] as List<dynamic>?) ?? [];
-
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('书库与文档切换', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold)),
-          content: SizedBox(
-            width: 400.0,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: books.length,
-              separatorBuilder: (_, __) => const Divider(height: 1.0),
-              itemBuilder: (_, index) {
-                final b = books[index];
-                final isCurrent = b['id'] == _currentBookId;
-                return ListTile(
-                  dense: true,
-                  title: Text(
-                    b['title'] ?? '未命名文档',
-                    style: TextStyle(
-                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                      color: isCurrent ? ReaderTheme.lightAccentFocus : null,
-                    ),
-                  ),
-                  subtitle: Text('格式: ${b['format'] ?? 'MD'} · 作者: ${b['author'] ?? '未知'}'),
-                  trailing: isCurrent ? const Icon(Icons.check, size: 16.0, color: ReaderTheme.lightAccentFocus) : null,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    _loadDocumentData(b['id'] as int);
-                  },
-                );
-              },
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('关闭'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showOpenFileDialog() {
-    final controller = TextEditingController(text: '/path/to/sample_technical_doc.md');
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: const Text('打开本地文档 (MD / EPUB / TXT / PDF)'),
-          content: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              labelText: '输入文档绝对路径',
-              hintText: '如: /home/user/Documents/book.epub',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final path = controller.text.trim();
-                Navigator.of(ctx).pop();
-                if (path.isNotEmpty) {
-                  final res = await _bridge.invoke('doc.parse', {'file_path': path});
-                  if (res.isSuccess) {
-                    final bookId = res.data['book_id'] ?? res.data['id'] ?? 1;
-                    _loadDocumentData(bookId);
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('解析失败: ${res.message}')),
-                      );
-                    }
-                  }
-                }
-              },
-              child: const Text('解析并打开'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void _focusNextParagraph() {
@@ -352,7 +318,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isDesktop = screenWidth >= 1024.0;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isDark = widget.isDarkMode;
 
     final canvasBg = isDark ? ReaderTheme.darkBgCanvas : ReaderTheme.lightBgCanvas;
     final surfaceBg = isDark ? ReaderTheme.darkBgSurface : ReaderTheme.lightBgSurface;
@@ -390,6 +356,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
           ),
           _ExitFocusIntent: CallbackAction<_ExitFocusIntent>(
             onInvoke: (_) {
+              if (_isTocOpen) {
+                setState(() => _isTocOpen = false);
+              }
               _focusController.exitFocusMode();
               _focusController.setCompanionDrawerOpen(false);
               setState(() => _selectionPosition = null);
@@ -426,7 +395,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                     children: [
                       Column(
                         children: [
-                          // 1. 极简自动隐退顶栏 (DESIGN.md §4.1: 44px 高度)
+                          // 1. 极简自动隐退顶栏 (DESIGN.md §4.1: 44px 高度，无边框喧宾夺主)
                           AnimatedContainer(
                             duration: ReaderTheme.chromeFadeDuration,
                             curve: Curves.easeInOut,
@@ -438,24 +407,29 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                 height: 44.0,
                                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                                 decoration: BoxDecoration(
-                                  color: surfaceBg,
-                                  border: Border(bottom: BorderSide(color: borderColor, width: 1.0)),
+                                  color: surfaceBg.withOpacity(0.92),
+                                  border: Border(bottom: BorderSide(color: borderColor, width: 0.5)),
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Row(
                                       children: [
-                                        if (isDesktop)
-                                          IconButton(
-                                            tooltip: '切换目录/导图 (Cmd+\\)',
-                                            icon: Icon(Icons.menu, size: 18.0, color: textSecondary),
-                                            onPressed: () => setState(() => _isTocOpen = !_isTocOpen),
-                                          ),
+                                        // 返回独立书库 (将文件控制和阅读彻底解耦)
                                         IconButton(
-                                          tooltip: '打开本地文档',
-                                          icon: Icon(Icons.folder_open_outlined, size: 18.0, color: textSecondary),
-                                          onPressed: _showOpenFileDialog,
+                                          tooltip: '返回书库 (文件管理)',
+                                          icon: Icon(Icons.arrow_back_ios_new, size: 15.0, color: textSecondary),
+                                          onPressed: widget.onBackToLibrary,
+                                        ),
+                                        const SizedBox(width: 4.0),
+                                        IconButton(
+                                          tooltip: '文章罗盘/目录 (Cmd+\\)',
+                                          icon: Icon(
+                                            _isTocOpen ? Icons.menu_open : Icons.menu,
+                                            size: 18.0,
+                                            color: _isTocOpen ? accentColor : textSecondary,
+                                          ),
+                                          onPressed: () => setState(() => _isTocOpen = !_isTocOpen),
                                         ),
                                       ],
                                     ),
@@ -467,6 +441,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             fontSize: 13.0,
                                             color: textSecondary,
                                             fontWeight: FontWeight.w500,
+                                            letterSpacing: 0.2,
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -480,7 +455,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                           ),
                                           icon: Icon(
                                             Icons.center_focus_strong,
-                                            size: 15.0,
+                                            size: 14.0,
                                             color: _focusController.isFocusModeEnabled ? accentColor : textSecondary,
                                           ),
                                           label: Text(
@@ -501,7 +476,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                           onPressed: widget.onToggleTheme,
                                         ),
                                         IconButton(
-                                          tooltip: '伴读抽屉',
+                                          tooltip: 'AI 认知伴读',
                                           icon: Icon(
                                             Icons.psychology_outlined,
                                             size: 18.0,
@@ -519,30 +494,29 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                             ),
                           ),
 
-                          // 2. 主工作区
+                          // 2. 主沉浸阅读区
                           Expanded(
                             child: Row(
                               children: [
-                                // 左侧目录与导图 (桌面端)
+                                // 左侧目录与导图 (纯文章罗盘，阅毕即隐)
                                 if (isDesktop && _isTocOpen)
                                   TocMindmapDrawer(
                                     sections: _tocSections,
                                     mindmapNodes: _mindmapNodes,
                                     keywords: _keywords,
                                     activeSectionId: _activeSectionId,
+                                    onClose: () => setState(() => _isTocOpen = false),
                                     onSectionSelected: (sec) {
                                       setState(() => _activeSectionId = sec.id);
                                     },
                                     onKeywordSelected: (kw) {
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('已锚定全书核心概念：#$kw')),
+                                        SnackBar(content: Text('已锚定核心概念：#$kw'), duration: const Duration(milliseconds: 1200)),
                                       );
                                     },
-                                    onOpenFile: _showOpenFileDialog,
-                                    onSwitchBook: _showBookSwitchDialog,
                                   ),
 
-                                // 中央沉浸黄金阅读区 (700px 定宽)
+                                // 中央沉浸黄金阅读区 (700px 定宽，iA Writer 极致排版)
                                 Expanded(
                                   child: Center(
                                     child: ConstrainedBox(
@@ -551,30 +525,35 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                       ),
                                       child: ListView.builder(
                                         controller: _scrollController,
-                                        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 48.0),
+                                        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 56.0),
                                         itemCount: _paragraphs.length + 1,
                                         itemBuilder: (context, index) {
                                           if (index == 0) {
                                             return Padding(
-                                              padding: const EdgeInsets.only(bottom: 36.0),
+                                              padding: const EdgeInsets.only(bottom: 48.0),
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     _currentBookTitle,
                                                     style: const TextStyle(
-                                                      fontSize: 28.0,
-                                                      fontWeight: FontWeight.bold,
-                                                      letterSpacing: -0.5,
+                                                      fontSize: 30.0,
+                                                      fontWeight: FontWeight.w600,
+                                                      letterSpacing: -0.6,
+                                                      height: 1.25,
                                                     ),
                                                   ),
-                                                  const SizedBox(height: 8.0),
+                                                  const SizedBox(height: 12.0),
                                                   Text(
-                                                    '极简主义排版 · iA Writer Typography · 本地优先离线计算',
-                                                    style: TextStyle(fontSize: 13.0, color: textSecondary),
+                                                    '极简主义排版 · iA Writer Typography · 纯净阅读心流',
+                                                    style: TextStyle(
+                                                      fontSize: 13.0,
+                                                      color: textSecondary,
+                                                      letterSpacing: 0.2,
+                                                    ),
                                                   ),
-                                                  const SizedBox(height: 24.0),
-                                                  const Divider(height: 1.0),
+                                                  const SizedBox(height: 28.0),
+                                                  Divider(height: 1.0, color: borderColor),
                                                 ],
                                               ),
                                             );
@@ -622,14 +601,14 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                   ),
                                                   if (notes != null && notes.isNotEmpty)
                                                     Padding(
-                                                      padding: const EdgeInsets.only(top: 6.0),
+                                                      padding: const EdgeInsets.only(top: 8.0),
                                                       child: Row(
                                                         children: [
-                                                          Icon(Icons.bookmark, size: 14.0, color: accentColor),
+                                                          Icon(Icons.bookmark_border, size: 14.0, color: accentColor),
                                                           const SizedBox(width: 4.0),
                                                           Text(
                                                             '${notes.length} 条已存边注',
-                                                            style: TextStyle(fontSize: 11.0, color: accentColor),
+                                                            style: TextStyle(fontSize: 11.5, color: accentColor, fontWeight: FontWeight.w500),
                                                           ),
                                                         ],
                                                       ),
@@ -656,7 +635,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     },
                                     onSaveAnnotation: (note) async {
                                       final targetPid = _focusController.activeParagraphId ?? 'p1';
-                                      await _bridge.invoke('annotation.save', {
+                                      await widget.bridge.invoke('annotation.save', {
                                         'book_id': _currentBookId,
                                         'section_id': _activeSectionId,
                                         'paragraph_id': targetPid,
@@ -668,7 +647,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                       });
                                     },
                                     onAskFollowUp: (q) async {
-                                      final res = await _bridge.invoke('ai.companion_ask', {
+                                      final res = await widget.bridge.invoke('ai.companion_ask', {
                                         'book_id': _currentBookId,
                                         'template_type': _activeTemplate.templateKey,
                                         'selected_text': _focusController.selectedText ?? '',
@@ -712,7 +691,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           },
                           onSaveAnnotation: () async {
                             final targetPid = _focusController.activeParagraphId ?? 'p1';
-                            await _bridge.invoke('annotation.save', {
+                            await widget.bridge.invoke('annotation.save', {
                               'book_id': _currentBookId,
                               'section_id': _activeSectionId,
                               'paragraph_id': targetPid,
