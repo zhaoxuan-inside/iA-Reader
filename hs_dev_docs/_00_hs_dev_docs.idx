@@ -1,10 +1,10 @@
 {"version": "1.0", "category": "root", "root": "hs_dev_docs"}
-{"id": "domain_project", "title": "项目基础配置与规范域", "path": "_00_project/_00_project.idx", "status": "active"}
-{"id": "domain_product", "title": "产品需求与规划域", "path": "_01_product_design/_00_product_design.idx", "status": "active"}
-{"id": "domain_tech", "title": "技术选型域", "path": "_02_tech_select/_00_tech_select.idx", "status": "active"}
-{"id": "domain_arch", "title": "架构设计域", "path": "_03_architecture_design/_00_architecture_design.idx", "status": "active"}
-{"id": "domain_db", "title": "数据库与迁移域", "path": "_04_db_schema/_00_db_schema.idx", "status": "active"}
-{"id": "domain_interface", "title": "接口设计域", "path": "_05_interface_design/_00_interface_design.idx", "status": "active"}
-{"id": "domain_method", "title": "方法设计域", "path": "_06_method_design/_00_method_design.idx", "status": "active"}
-{"id": "domain_call_chain", "title": "调用链分析域", "path": "_07_call_chain/_00_call_chain.idx", "status": "active"}
-{"id": "domain_process", "title": "开发过程与任务域", "path": "_08_dev_process/_00_dev_process.idx", "status": "active"}
+{"id": "domain_project", "title": "项目基础配置与规范域", "path": "_00_project/_00_project.idx", "status": "active", "digest": "e0aa9a25"}
+{"id": "domain_product", "title": "产品需求与规划域", "path": "_01_product_design/_00_product_design.idx", "status": "active", "digest": "b69402ff"}
+{"id": "domain_tech", "title": "技术选型域", "path": "_02_tech_select/_00_tech_select.idx", "status": "active", "digest": "2487c489"}
+{"id": "domain_arch", "title": "架构设计域", "path": "_03_architecture_design/_00_architecture_design.idx", "status": "active", "digest": "b35f2f20"}
+{"id": "domain_db", "title": "数据库与迁移域", "path": "_04_db_schema/_00_db_schema.idx", "status": "active", "digest": "95a4fbce"}
+{"id": "domain_interface", "title": "接口设计域", "path": "_05_interface_design/_00_interface_design.idx", "status": "active", "digest": "e477b038"}
+{"id": "domain_method", "title": "方法设计域", "path": "_06_method_design/_00_method_design.idx", "status": "active", "digest": "f54e3728"}
+{"id": "domain_call_chain", "title": "调用链分析域", "path": "_07_call_chain/_00_call_chain.idx", "status": "active", "digest": "7d71a4ff"}
+{"id": "domain_process", "title": "开发过程与任务域", "path": "_08_dev_process/_00_dev_process.idx", "status": "active", "digest": "6123c178"}

@@ -1,61 +1,31 @@
 {
   "project": "ai-reader",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "release_timestamp": "2026-10-10T12:00:00Z",
   "packages": [
     {
-      "file": "android/ai-reader-v2.0.0-arm64-v8a-release.apk",
-      "size_bytes": 1537,
-      "sha256": "cbdc4f2587195fb51850f26e6840476bb2c260d5d900d902d20ffecb485a9910",
-      "platform": "android"
-    },
-    {
-      "file": "android/ai-reader-v2.0.0-universal-release.apk",
-      "size_bytes": 1373,
-      "sha256": "2e2d6b587181b3b75a7c2ed158f8de31f68b3932c6b78cd65145e15d2dfb3273",
-      "platform": "android"
-    },
-    {
-      "file": "ios/ai_reader_v2.0.0.ipa",
-      "size_bytes": 1455,
-      "sha256": "5ae935c0187a1fa57c2d0abfdcefb37e333f265995013ef9da7ebb2c73af9262",
-      "platform": "ios"
-    },
-    {
-      "file": "linux/AI_Reader-2.0.0-x86_64.AppImage",
-      "size_bytes": 72,
-      "sha256": "a0a70c1ab14249021a438ef70ae6e94f38cd4c2c4dc5faa18fd82b103ff8c380",
+      "file": "linux/AI_Reader-3.0.0-x86_64.AppImage",
+      "size_bytes": 89,
+      "sha256": "1bed65786cfba0ce313c0f8e4c30c26ad75ec4c619a5ab06b5957cbaf71998ca",
       "platform": "linux"
     },
     {
-      "file": "linux/ai-reader-2.0.0-1-x86_64.pkg.tar.zst",
-      "size_bytes": 61636,
-      "sha256": "ff64a6c58f73749613bda993ece95cac63b16fc46c0dfcb9b7a4e8d7f7bfe477",
+      "file": "linux/ai-reader-3.0.0-1-x86_64.pkg.tar.zst",
+      "size_bytes": 48918,
+      "sha256": "26d6e5618f528fdfb8fd946d0a3dc4ad913028a66fe9019b9895684a3bab6f60",
       "platform": "linux"
     },
     {
-      "file": "linux/ai-reader-2.0.0-1.x86_64.rpm",
-      "size_bytes": 129,
-      "sha256": "347325c2cb0f63255b148304b3c2a6140cee61f1a8fc60bae4e5ee29c30c2ab3",
+      "file": "linux/ai-reader-3.0.0-1.x86_64.rpm",
+      "size_bytes": 133,
+      "sha256": "4f31d613b0a5cb23e3384b73b0621359126c82e406ec6269957d0c6db5337908",
       "platform": "linux"
     },
     {
-      "file": "linux/ai-reader_2.0.0_amd64.deb",
-      "size_bytes": 61644,
-      "sha256": "74c192af1875e7603ebaa7269702bcedbd04dba2ffe401e2b2adb42cdfe3421f",
+      "file": "linux/ai-reader_3.0.0_amd64.deb",
+      "size_bytes": 48964,
+      "sha256": "9b86c2965b7e523a014fb2cc147cb678ed1529925451cbd33b568cb009613c80",
       "platform": "linux"
-    },
-    {
-      "file": "windows/AI_Reader_Setup_v2.0.0.exe",
-      "size_bytes": 3249,
-      "sha256": "54ef37fb7139f0a01c624de3c19303c17e3e9b23215a845a81b9abdd455b9b17",
-      "platform": "windows"
-    },
-    {
-      "file": "windows/AI_Reader_v2.0.0_Windows_x64_Portable.zip",
-      "size_bytes": 1490,
-      "sha256": "be83ccd0013e578d6178c3ec20098b06632ce6e20bff17ed3b9d94ed150815af",
-      "platform": "windows"
     }
   ]
 }

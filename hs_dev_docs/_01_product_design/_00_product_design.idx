@@ -1,2 +1,2 @@
 {"version": "1.0", "category": "product_design", "root": "_01_product_design"}
-{"id": "prd_ai_reader_full_feature", "title": "AI Reader 全功能智能阅读器产品需求规格说明书", "path": "_02_product_design/ai_reader_full_feature_prd.md", "status": "active", "digest": "edc46d14"}
+{"id": "prd_ai_reader_full_feature", "title": "AI Reader 核心计算与智能解析引擎产品需求规格说明书", "path": "_02_product_design/ai_reader_full_feature_prd.md", "status": "active", "digest": "694e6b84"}

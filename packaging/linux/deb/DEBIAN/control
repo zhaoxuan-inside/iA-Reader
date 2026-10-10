@@ -1,13 +1,13 @@
 Package: ai-reader
-Version: 2.0.0
+Version: 3.0.0
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: AI Reader Team <dev@ai-reader.io>
-Depends: python3, python3-gi, gir1.2-gtk-3.0, gir1.2-pango-1.0, libgtk-3-0, libc6, libstdc++6
+Depends: python3, libc6
 Homepage: https://github.com/ai-reader/ai-reader
-Description: Editorial Minimalist AI Reader with iA Writer Margins & NLP Knowledge Graph
- AI Reader is a modern editorial reading workbench supporting EPUB, PDF,
- Markdown, and TXT with iA Writer baseline-aligned marginalia, 4 deep cognitive
- companion templates, offline classical NLP keyword extraction, co-occurrence
- graphs, and structured interactive mind maps.
+Description: Headless Core Computation and Document Parsing Engine CLI
+ AI Reader is a high-performance document parsing and cognitive computing engine
+ supporting EPUB, PDF, Markdown, and TXT with offline tri-level NLP keyword extraction,
+ concept co-occurrence topology graphs, structured mindmaps, SQLite persistence,
+ and cognitive companion pipelines.

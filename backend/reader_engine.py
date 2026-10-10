@@ -1217,19 +1217,20 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
 
     if action == "doc.parse":
         return engine.doc_parse(payload.get("file_path", ""))
-    elif action == "doc.list":
+    elif action in ("doc.list", "book.list"):
         return {"books": engine.storage.list_books()}
-    elif action == "doc.delete":
+    elif action in ("doc.delete", "book.delete"):
         engine.storage.delete_book(payload.get("book_id", 0))
         return {"status": "deleted", "book_id": payload.get("book_id", 0)}
-    elif action == "doc.get":
+    elif action in ("doc.get", "book.detail"):
         book_id = payload.get("book_id", 1)
         book = engine.storage.get_book(book_id)
         sections = engine.storage.get_sections(book_id)
-        return {"meta": book, "sections": sections}
-    elif action == "nlp.extract_keywords":
-        return {"keywords": engine.nlp_keyword_extract(payload.get("book_id", 1), payload.get("top_n", 30))}
-    elif action == "nlp.build_graph":
+        return {"book": book, "meta": book, "sections": sections}
+    elif action in ("nlp.extract_keywords", "nlp.keyword_extract"):
+        top_n = payload.get("top_k", payload.get("top_n", 30))
+        return {"keywords": engine.nlp_keyword_extract(payload.get("book_id", 1), top_n)}
+    elif action in ("nlp.build_graph", "graph.build"):
         book_id = payload.get("book_id", 1)
         keywords = engine.storage.get_keywords(book_id)
         if not keywords:
@@ -1239,7 +1240,8 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
             relations = engine.keyword_graph_build(book_id, payload.get("min_co_occurrence", 1))
         return {
             "nodes": keywords,
-            "links": relations
+            "links": relations,
+            "edges": relations
         }
     elif action == "mindmap.generate":
         return {"nodes": engine.mindmap_generate(payload.get("book_id", 1))}

@@ -1,12 +1,12 @@
 # Maintainer: AI Reader Team <dev@ai-reader.io>
 pkgname=ai-reader
-pkgver=2.0.0
+pkgver=3.0.0
 pkgrel=1
-pkgdesc="Editorial Minimalist AI Reader with iA Writer Margins & NLP Knowledge Graph"
+pkgdesc="Headless Core Computation and Document Parsing Engine CLI"
 arch=('x86_64')
 url="https://github.com/ai-reader/ai-reader"
 license=('MIT')
-depends=('python' 'python-gobject' 'gtk3')
+depends=('python')
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 
@@ -14,13 +14,8 @@ package() {
     cd "${srcdir}/${pkgname}-${pkgver}"
     install -d "${pkgdir}/usr/lib/ai-reader"
     install -d "${pkgdir}/usr/bin"
-    install -d "${pkgdir}/usr/share/applications"
-    install -d "${pkgdir}/usr/share/icons/hicolor/scalable/apps"
 
     install -m755 linux/ai_reader_app.py "${pkgdir}/usr/lib/ai-reader/ai_reader"
     cp -r backend "${pkgdir}/usr/lib/ai-reader/"
     ln -sf /usr/lib/ai-reader/ai_reader "${pkgdir}/usr/bin/ai_reader"
-
-    install -m644 packaging/linux/deb/usr/share/applications/ai-reader.desktop "${pkgdir}/usr/share/applications/"
-    install -m644 packaging/linux/deb/usr/share/icons/hicolor/scalable/apps/ai-reader.svg "${pkgdir}/usr/share/icons/hicolor/scalable/apps/"
 }

@@ -85,3 +85,4 @@ terms:
     scope: "bridge_protocol"
     forbidden_aliases: ["response_wrapper", "result_packet"]
     description: "包含 code, message, data, metrics 的通用 FFI 数据传输载荷"
+

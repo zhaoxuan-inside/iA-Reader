@@ -1,3 +1,3 @@
 {"version": "1.0", "category": "project", "root": "_00_project"}
-{"id": "adr_001_tech_stack", "title": "ADR 001: 跨平台基础技术栈选型决策", "path": "_05_decision_record/ADR_001_tech_stack_selection.md", "status": "active", "digest": "f4cc4b80"}
+{"id": "adr_001_tech_stack", "title": "ADR 001: 基础核心计算引擎技术栈选型决策", "path": "_05_decision_record/ADR_001_tech_stack_selection.md", "status": "active", "digest": "f4cc4b80"}
 {"id": "adr_002_ffi_bridge", "title": "ADR 002: 跨语言 FFI 通信与统一信封契约协议决策", "path": "_05_decision_record/ADR_002_ffi_bridge_protocol.md", "status": "active", "digest": "ec712b27"}
