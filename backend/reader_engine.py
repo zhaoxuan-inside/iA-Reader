@@ -290,6 +290,14 @@ class StorageManager:
         conn.close()
         return [dict(r) for r in rows]
 
+    def get_sentences_by_book(self, book_id: int) -> List[Dict[str, Any]]:
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM sentence_node WHERE book_id = ? AND is_del = 0 ORDER BY id ASC", (book_id,))
+        rows = cur.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
     def save_keywords(self, keywords: List[Dict[str, Any]]):
         conn = self.get_connection()
         cur = conn.cursor()
@@ -860,6 +868,9 @@ class ReaderEngineService:
     # 1. doc_parse 六元组
     def doc_parse(self, file_path: str) -> Dict[str, Any]:
         start = time.time()
+        if not file_path or not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
         ext = file_path.split(".")[-1].lower() if "." in file_path else "txt"
 
         if ext == "pdf":
@@ -880,9 +891,13 @@ class ReaderEngineService:
         for s in parsed["sections"]:
             s["book_id"] = book_id
         self.storage.save_sections(parsed["sections"])
+        saved_sections = self.storage.get_sections(book_id)
+        sec_map = {sec["section_index"]: sec["id"] for sec in saved_sections}
 
         for sent in parsed["sentences"]:
             sent["book_id"] = book_id
+            if sent.get("section_id") in sec_map:
+                sent["section_id"] = sec_map[sent["section_id"]]
         self.storage.save_sentences(parsed["sentences"])
 
         # 异步触发离线 NLP 分词索引构建与导图树
