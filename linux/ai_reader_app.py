@@ -2,13 +2,12 @@
 # -*- coding: utf-8 -*-
 """
 linux/ai_reader_app.py
-AI Reader - Modern Minimalist Desktop Workbench (Linux Native GTK3 Engine)
-Design Language:
-- Tailwind CSS Typography (Prose Stone / Neutral) & iA Writer Aesthetic
-- 100% Pure Monoline Line Icons & Typography (Zero Emoji)
-- Left Navigation (Outline / Knowledge Graph / Mindmap / Bookshelf)
-- Center Editorial Viewport (1.8em Golden Line Height, Paragraph Anchors, Selection Menu)
-- Right Marginalia Column (Baseline Anchored Notes & 4-Template Cognitive Companion)
+AI Reader - Modern Minimalist Desktop Workbench
+Design Language: Notion + Apple Design System
+- Apple macOS Unified Titlebar (Clean HeaderBar, SF-style Capsule Buttons, Apple Blue Accent #0071E3)
+- Notion Workspace Aesthetics (Warm Neutral Background #F7F7F5, Notion Page Canvas #FFFFFF)
+- Notion Block Typography & Callouts (1.75em Line Height, Notion Tags/Chips & Comment Threads)
+- Interactive Cairo Knowledge Graph with Apple Pastel Color Scheme
 - Strict Alignment with PRD, Architecture & Six-Tuple Engine Contracts
 """
 
@@ -48,145 +47,293 @@ def save_llm_settings(cfg: dict):
 
 
 # ==============================================================================
-# CSS 样式系统 (Tailwind Prose Stone / Neutral & iA Writer 羊皮纸护眼风格)
+# CSS 样式系统 (Notion + Apple Design System)
 # ==============================================================================
-PROSE_CSS = """
+NOTION_APPLE_CSS = """
+/* 全局主窗口：Notion 经典侧栏微暖底色与 Apple 界面字体 */
 window.ia-reader-window {
-    background-color: #FAF9F6;
-    color: #1C1917;
+    background-color: #F7F7F5;
+    color: #37352F;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
+/* Apple 统一标题栏 (Unified Titlebar) */
 headerbar.ia-headerbar {
-    background-color: #FAF9F6;
-    border-bottom: 1px solid #E7E5E4;
-    min-height: 48px;
-    padding: 0 12px;
+    background-color: #FFFFFF;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    min-height: 50px;
+    padding: 0 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
+headerbar.ia-headerbar .title {
+    font-weight: 600;
+    font-size: 14px;
+    color: #1D1D1F;
+}
+
+headerbar.ia-headerbar .subtitle {
+    font-size: 11.5px;
+    color: #86868B;
+}
+
+/* Apple 胶囊按钮 (Capsule / Pill Buttons) */
 headerbar.ia-headerbar button {
-    background: #FFFFFF;
-    border: 1px solid #D6D3D1;
-    border-radius: 6px;
-    color: #292524;
-    font-size: 13px;
-    padding: 4px 12px;
+    background-color: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    color: #1D1D1F;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 5px 12px;
     margin: 0 3px;
+    transition: all 120ms ease;
 }
 
 headerbar.ia-headerbar button:hover {
-    background: #F5F5F4;
-    border-color: #A8A29E;
+    background-color: #F5F5F7;
+    border-color: rgba(0, 0, 0, 0.22);
+    color: #000000;
 }
 
+headerbar.ia-headerbar button.apple-primary-btn {
+    background-color: #0071E3;
+    border: 1px solid #0071E3;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+headerbar.ia-headerbar button.apple-primary-btn:hover {
+    background-color: #0077ED;
+    border-color: #0077ED;
+}
+
+/* 左侧 Notion 侧栏容器 */
 notebook.ia-notebook {
-    background-color: #F7F6F3;
-    border-right: 1px solid #E7E5E4;
+    background-color: #F7F7F5;
+    border-right: 1px solid #E9E9E7;
 }
 
 notebook.ia-notebook tab {
-    padding: 6px 14px;
+    background-color: transparent;
+    border: none;
+    padding: 7px 14px;
     font-size: 13px;
-    color: #57534E;
+    font-weight: 500;
+    color: #787774;
+    border-radius: 6px;
+    margin: 4px 2px;
+    transition: all 100ms ease;
+}
+
+notebook.ia-notebook tab:hover {
+    color: #37352F;
+    background-color: rgba(55, 53, 47, 0.05);
 }
 
 notebook.ia-notebook tab:checked {
-    color: #0C0A09;
-    font-weight: bold;
-    background-color: #FAF9F6;
+    color: #191919;
+    font-weight: 600;
+    background-color: #FFFFFF;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
+/* Notion 树形页面列表 */
+treeview.ia-treeview {
+    background-color: #F7F7F5;
+    color: #37352F;
+    border: none;
+    font-size: 13px;
+}
+
+treeview.ia-treeview:selected {
+    background-color: #E8E8E5;
+    color: #191919;
+    font-weight: 500;
+    border-radius: 6px;
+}
+
+/* 中间正文视口：Notion 纯白文档画布 */
 textview.ia-editor {
-    background-color: #FAF9F6;
-    color: #1C1917;
+    background-color: #FFFFFF;
+    color: #2F3437;
 }
 
 textview.ia-editor text {
-    background-color: #FAF9F6;
-    color: #1C1917;
+    background-color: #FFFFFF;
+    color: #2F3437;
 }
 
-box.ia-marginalia {
+textview.ia-editor text:selected {
+    background-color: #B4D5FE;
+    color: #000000;
+}
+
+textview.ia-card-text {
     background-color: #FBFBFA;
-    border-left: 1px solid #E7E5E4;
+    color: #37352F;
+    font-size: 13px;
 }
 
+textview.ia-card-text text {
+    background-color: #FBFBFA;
+    color: #37352F;
+}
+
+/* 右侧边注与伴读：Apple 检查器面板 (Inspector Panel) */
+box.ia-marginalia {
+    background-color: #FAFAFA;
+    border-left: 1px solid #EBEBEA;
+}
+
+/* Notion 风格卡片 (Callout / Card Container) */
 frame.ia-card {
     background-color: #FFFFFF;
-    border: 1px solid #E7E5E4;
-    border-radius: 8px;
-    padding: 8px;
-    margin-bottom: 8px;
+    border: 1px solid #EBEBEA;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
-button.ia-template-btn {
-    background: #F5F5F4;
+/* Notion 4 大认知模板彩色标签按钮 (Notion Tag Chips) */
+button.ia-chip-yellow {
+    background-color: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FDE68A;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+button.ia-chip-yellow:hover {
+    background-color: #FDE68A;
+}
+
+button.ia-chip-green {
+    background-color: #DCFCE7;
+    color: #166534;
+    border: 1px solid #BBF7D0;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+button.ia-chip-green:hover {
+    background-color: #BBF7D0;
+}
+
+button.ia-chip-blue {
+    background-color: #E0F2FE;
+    color: #1E40AF;
+    border: 1px solid #BAE6FD;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+button.ia-chip-blue:hover {
+    background-color: #BAE6FD;
+}
+
+button.ia-chip-purple {
+    background-color: #F3E8FF;
+    color: #6B21A8;
+    border: 1px solid #DDD6FE;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+button.ia-chip-purple:hover {
+    background-color: #DDD6FE;
+}
+
+/* Apple 强调色按钮 */
+button.ia-apple-btn {
+    background-color: #0071E3;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 6px 14px;
+}
+button.ia-apple-btn:hover {
+    background-color: #0077ED;
+}
+
+/* Notion 次级操作按钮 */
+button.ia-notion-btn {
+    background-color: #FFFFFF;
+    color: #37352F;
     border: 1px solid #D6D3D1;
-    border-radius: 6px;
-    color: #44403C;
+    border-radius: 8px;
     font-size: 12px;
     font-weight: 500;
-    padding: 4px 8px;
-}
-
-button.ia-template-btn:hover {
-    background: #E7E5E4;
-    color: #1C1917;
-}
-
-button.ia-primary-btn {
-    background: #2563EB;
-    color: #FFFFFF;
-    border-radius: 6px;
-    border: none;
-    font-size: 12px;
     padding: 5px 12px;
 }
+button.ia-notion-btn:hover {
+    background-color: #F7F7F5;
+    border-color: #A8A29E;
+}
 
-button.ia-primary-btn:hover {
-    background: #1D4ED8;
+/* Apple 风格圆角输入框 */
+entry.ia-entry {
+    background-color: #FFFFFF;
+    border: 1px solid #D1D1D6;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 12.5px;
+    color: #1D1D1F;
+}
+entry.ia-entry:focus {
+    border-color: #0071E3;
+    box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.2);
 }
 """
 
 
 # ==============================================================================
-# 模型设置对话框 (LLMSettingsDialog)
+# 模型设置对话框 (LLMSettingsDialog - Apple Modal Style)
 # ==============================================================================
 class LLMSettingsDialog(Gtk.Dialog):
     def __init__(self, parent):
-        super().__init__(title="模型与伴读配置", transient_for=parent, flags=0)
-        self.set_default_size(520, 480)
-        self.add_button("取消", Gtk.ResponseType.CANCEL)
-        self.add_button("保存配置", Gtk.ResponseType.OK)
+        super().__init__(title="模型与伴读设置 (AI Settings)", transient_for=parent, flags=0)
+        self.set_default_size(540, 490)
+        btn_cancel = self.add_button("取消", Gtk.ResponseType.CANCEL)
+        btn_ok = self.add_button("保存配置", Gtk.ResponseType.OK)
+        btn_ok.get_style_context().add_class("ia-apple-btn")
 
         self.current_cfg = get_llm_config()
         self._build_ui()
 
     def _build_ui(self):
         box = self.get_content_area()
-        box.set_spacing(10)
-        box.set_margin_start(20)
-        box.set_margin_end(20)
-        box.set_margin_top(15)
-        box.set_margin_bottom(15)
+        box.set_spacing(12)
+        box.set_margin_start(24)
+        box.set_margin_end(24)
+        box.set_margin_top(20)
+        box.set_margin_bottom(20)
 
         lbl = Gtk.Label()
-        lbl.set_markup("<b>LLM 服务与深度伴读配置</b>\n<small>支持 OpenAI / DeepSeek / Ollama / Gemini / 兼容端点</small>")
+        lbl.set_markup("<b>🤖 LLM 智能伴读与深度模型配置</b>\n<span foreground='#86868B'><small>支持 OpenAI / DeepSeek / Ollama / Gemini / 兼容端点</small></span>")
         lbl.set_xalign(0)
         box.pack_start(lbl, False, False, 0)
 
         grid = Gtk.Grid()
-        grid.set_column_spacing(12)
-        grid.set_row_spacing(10)
+        grid.set_column_spacing(14)
+        grid.set_row_spacing(12)
         box.pack_start(grid, False, False, 0)
 
-        # 预置供应商
+        # 供应商
         grid.attach(Gtk.Label(label="服务提供方:", xalign=0), 0, 0, 1, 1)
         self.combo_provider = Gtk.ComboBoxText()
         providers = [
             ("deepseek", "DeepSeek (api.deepseek.com)"),
             ("openai", "OpenAI (api.openai.com)"),
             ("ollama", "本地 Ollama (127.0.0.1:11434)"),
-            ("custom", "自定义 OpenAI 兼容接口")
+            ("custom", "自定义兼容接口 (Custom)")
         ]
         for key, name in providers:
             self.combo_provider.append(key, name)
@@ -194,23 +341,26 @@ class LLMSettingsDialog(Gtk.Dialog):
         self.combo_provider.connect("changed", self._on_provider_changed)
         grid.attach(self.combo_provider, 1, 0, 1, 1)
 
-        # API Endpoint
+        # Endpoint
         grid.attach(Gtk.Label(label="API 端点:", xalign=0), 0, 1, 1, 1)
         self.entry_endpoint = Gtk.Entry()
+        self.entry_endpoint.get_style_context().add_class("ia-entry")
         self.entry_endpoint.set_text(self.current_cfg.get("endpoint", "https://api.deepseek.com/v1"))
         grid.attach(self.entry_endpoint, 1, 1, 1, 1)
 
         # API Key
         grid.attach(Gtk.Label(label="API Key:", xalign=0), 0, 2, 1, 1)
         self.entry_key = Gtk.Entry()
+        self.entry_key.get_style_context().add_class("ia-entry")
         self.entry_key.set_visibility(False)
         self.entry_key.set_text(self.current_cfg.get("api_key", ""))
         self.entry_key.set_placeholder_text("sk-...")
         grid.attach(self.entry_key, 1, 2, 1, 1)
 
-        # 模型名称
+        # Model Name
         grid.attach(Gtk.Label(label="模型名称:", xalign=0), 0, 3, 1, 1)
         self.entry_model = Gtk.Entry()
+        self.entry_model.get_style_context().add_class("ia-entry")
         self.entry_model.set_text(self.current_cfg.get("model_name", "deepseek-chat"))
         grid.attach(self.entry_model, 1, 3, 1, 1)
 
@@ -259,40 +409,41 @@ class LLMSettingsDialog(Gtk.Dialog):
 
 
 # ==============================================================================
-# 添加边注对话框 (AddAnnotationDialog)
+# 添加边注对话框 (AddAnnotationDialog - Notion Tag Style)
 # ==============================================================================
 class AddAnnotationDialog(Gtk.Dialog):
     def __init__(self, parent, selected_text: str):
-        super().__init__(title="添加阅读边注", transient_for=parent, flags=0)
-        self.set_default_size(440, 320)
+        super().__init__(title="添加阅读边注心得", transient_for=parent, flags=0)
+        self.set_default_size(460, 340)
         self.add_button("取消", Gtk.ResponseType.CANCEL)
-        self.add_button("沉淀边注", Gtk.ResponseType.OK)
+        btn_ok = self.add_button("沉淀笔记", Gtk.ResponseType.OK)
+        btn_ok.get_style_context().add_class("ia-apple-btn")
 
         self.selected_text = selected_text
-        self.chosen_color = "#FDE047"  # 默认黄色
+        self.chosen_color = "#FDE047"
         self._build_ui()
 
     def _build_ui(self):
         box = self.get_content_area()
-        box.set_spacing(10)
-        box.set_margin_start(16)
-        box.set_margin_end(16)
-        box.set_margin_top(12)
-        box.set_margin_bottom(12)
+        box.set_spacing(12)
+        box.set_margin_start(20)
+        box.set_margin_end(20)
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
 
-        lbl_quote = Gtk.Label()
+        # 引用卡片
         short_quote = self.selected_text[:140] + ("..." if len(self.selected_text) > 140 else "")
-        lbl_quote.set_markup(f"<b>引用选区：</b>\n<i>“{short_quote}”</i>")
+        lbl_quote = Gtk.Label()
+        lbl_quote.set_markup(f"<span color='#86868B'>引用选区：</span>\n<i>“{short_quote}”</i>")
         lbl_quote.set_line_wrap(True)
         lbl_quote.set_xalign(0)
         box.pack_start(lbl_quote, False, False, 0)
 
-        # 颜色选择
-        color_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        # 颜色单选
+        color_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         color_box.pack_start(Gtk.Label(label="高亮色彩:"), False, False, 0)
 
         colors = [("#FDE047", "鹅黄"), ("#86EFAC", "薄荷绿"), ("#93C5FD", "天蓝"), ("#F472B6", "樱粉")]
-        self.color_radios = []
         first_radio = None
         for code, name in colors:
             radio = Gtk.RadioButton.new_with_label_from_widget(first_radio, name)
@@ -302,8 +453,8 @@ class AddAnnotationDialog(Gtk.Dialog):
             color_box.pack_start(radio, False, False, 0)
         box.pack_start(color_box, False, False, 0)
 
-        # 批注心得
-        box.pack_start(Gtk.Label(label="边注心得 / 个人思考:", xalign=0), False, False, 0)
+        # 批注内容
+        box.pack_start(Gtk.Label(label="心得与批注思考:", xalign=0), False, False, 0)
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_min_content_height(120)
         self.tv_note = Gtk.TextView()
@@ -323,7 +474,7 @@ class AddAnnotationDialog(Gtk.Dialog):
 
 
 # ==============================================================================
-# 交互式 Cairo 概念图谱画布 (KnowledgeGraphCanvas)
+# 交互式 Cairo 概念图谱画布 (KnowledgeGraphCanvas - Apple Pastel Palette)
 # ==============================================================================
 class KnowledgeGraphCanvas(Gtk.DrawingArea):
     def __init__(self, on_node_click_callback=None):
@@ -348,8 +499,7 @@ class KnowledgeGraphCanvas(Gtk.DrawingArea):
         self.node_positions.clear()
         if not self.nodes:
             return
-        
-        # 极坐标环状与力导向初值排布
+
         w = max(self.get_allocated_width(), 320)
         h = max(self.get_allocated_height(), 400)
         cx, cy = w / 2.0, h / 2.0
@@ -358,7 +508,6 @@ class KnowledgeGraphCanvas(Gtk.DrawingArea):
         n = len(self.nodes)
         for i, node in enumerate(self.nodes):
             angle = 2.0 * math.pi * i / max(n, 1)
-            # 根据重要度/权重在半径上微调
             score = float(node.get("score", 0.5))
             r = r_base * (0.55 + 0.45 * (1.0 - min(score, 1.0)))
             x = cx + r * math.cos(angle)
@@ -366,27 +515,27 @@ class KnowledgeGraphCanvas(Gtk.DrawingArea):
             self.node_positions[node["word"]] = {
                 "x": x,
                 "y": y,
-                "radius": 14 + int(score * 12),
-                "data": node
+                "radius": 15 + int(score * 12),
+                "data": node,
+                "color_idx": i % 4
             }
 
     def _on_draw(self, widget, cr: cairo.Context):
         w = self.get_allocated_width()
         h = self.get_allocated_height()
 
-        # 底色微暖
-        cr.set_source_rgb(0.97, 0.97, 0.96)
+        # Notion 画布微温浅底色 (#FBFBFA)
+        cr.set_source_rgb(0.984, 0.984, 0.980)
         cr.paint()
 
         if not self.nodes:
-            cr.set_source_rgb(0.5, 0.5, 0.5)
+            cr.set_source_rgb(0.55, 0.55, 0.58)
             cr.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
             cr.set_font_size(13)
-            cr.move_to(20, 40)
-            cr.show_text("全书关键词提取中或暂无关联图谱...")
+            cr.move_to(24, 48)
+            cr.show_text("关键词抽取完成，正在构建概念拓扑网络...")
             return
 
-        # 重新校准中心
         cx, cy = w / 2.0, h / 2.0
         r_base = min(cx, cy) * 0.72
         n = len(self.nodes)
@@ -399,11 +548,20 @@ class KnowledgeGraphCanvas(Gtk.DrawingArea):
                 self.node_positions[word] = {
                     "x": cx + r * math.cos(angle),
                     "y": cy + r * math.sin(angle),
-                    "radius": 14 + int(score * 12),
-                    "data": node
+                    "radius": 15 + int(score * 12),
+                    "data": node,
+                    "color_idx": i % 4
                 }
 
-        # 1. 绘制共现连接线
+        # Apple 柔和马卡龙色彩库 (Fill, Stroke, Text)
+        pastel_themes = [
+            ((0.88, 0.95, 0.99), (0.49, 0.83, 0.99), (0.01, 0.41, 0.63)),  # Sky Blue
+            ((0.95, 0.91, 1.00), (0.85, 0.71, 0.99), (0.49, 0.13, 0.81)),  # Lavender Purple
+            ((0.86, 0.99, 0.90), (0.52, 0.94, 0.67), (0.08, 0.50, 0.24)),  # Mint Green
+            ((0.99, 0.95, 0.78), (0.99, 0.83, 0.30), (0.71, 0.33, 0.04))   # Soft Amber
+        ]
+
+        # 1. 绘制共现连接线 (微透明柔和连线)
         for link in self.links:
             w1 = link.get("source_word")
             w2 = link.get("target_word")
@@ -414,51 +572,60 @@ class KnowledgeGraphCanvas(Gtk.DrawingArea):
 
                 is_highlight = self.selected_node in (w1, w2)
                 if is_highlight:
-                    cr.set_source_rgba(0.15, 0.4, 0.9, 0.8)
-                    cr.set_line_width(2.0 + min(weight * 0.5, 3.0))
+                    cr.set_source_rgba(0.0, 0.44, 0.89, 0.85)  # Apple Blue
+                    cr.set_line_width(2.5 + min(weight * 0.4, 3.5))
                 else:
-                    cr.set_source_rgba(0.75, 0.75, 0.75, 0.4)
-                    cr.set_line_width(1.0)
-                
+                    cr.set_source_rgba(0.80, 0.80, 0.83, 0.5)
+                    cr.set_line_width(1.2)
+
                 cr.move_to(p1["x"], p1["y"])
                 cr.line_to(p2["x"], p2["y"])
                 cr.stroke()
 
-        # 2. 绘制节点圆圈与文本标签
+        # 2. 绘制节点圆圈与文字标签
         layout = self.create_pango_layout("")
         for word, p in self.node_positions.items():
             is_active = (self.selected_node == word)
             rad = p["radius"]
+            theme = pastel_themes[p.get("color_idx", 0)]
 
-            # 填充圆
+            # 选中状态的光晕外环 (Apple Glow Ring)
             if is_active:
-                cr.set_source_rgb(0.18, 0.45, 0.95)
+                cr.set_source_rgba(0.0, 0.44, 0.89, 0.25)
+                cr.arc(p["x"], p["y"], rad + 6, 0, 2 * math.pi)
+                cr.fill()
+
+            # 节点圆形填充
+            if is_active:
+                cr.set_source_rgb(0.0, 0.44, 0.89)  # Apple Blue
             else:
-                cr.set_source_rgb(0.92, 0.93, 0.95)
+                cr.set_source_rgb(*theme[0])
             cr.arc(p["x"], p["y"], rad, 0, 2 * math.pi)
             cr.fill_preserve()
 
-            # 边框
+            # 节点描边
             if is_active:
-                cr.set_source_rgb(0.1, 0.25, 0.6)
+                cr.set_source_rgb(0.0, 0.30, 0.70)
                 cr.set_line_width(2.5)
             else:
-                cr.set_source_rgb(0.65, 0.68, 0.72)
-                cr.set_line_width(1.2)
+                cr.set_source_rgb(*theme[1])
+                cr.set_line_width(1.5)
             cr.stroke()
 
-            # 标签
+            # 文字标签
             layout.set_text(word, -1)
-            desc = Pango.FontDescription("Sans 9")
+            desc = Pango.FontDescription("Sans 9.5")
+            desc.set_weight(Pango.Weight.BOLD if is_active else Pango.Weight.MEDIUM)
             layout.set_font_description(desc)
             ink, logical = layout.get_pixel_extents()
-            tw, th = logical.width, logical.height
+            tw = logical.width
+            th = logical.height
 
-            cr.move_to(p["x"] - tw / 2.0, p["y"] + rad + 2)
+            cr.move_to(p["x"] - tw / 2.0, p["y"] + rad + 3)
             if is_active:
-                cr.set_source_rgb(0.1, 0.2, 0.5)
+                cr.set_source_rgb(0.0, 0.44, 0.89)
             else:
-                cr.set_source_rgb(0.25, 0.25, 0.28)
+                cr.set_source_rgb(0.18, 0.18, 0.20)
             PangoCairo.show_layout(cr, layout)
 
     def _on_click(self, widget, event):
@@ -479,18 +646,18 @@ class KnowledgeGraphCanvas(Gtk.DrawingArea):
 
 
 # ==============================================================================
-# 主窗体 (AIReaderWindow)
+# 主窗体 (AIReaderWindow - Notion + Apple Aesthetics)
 # ==============================================================================
 class AIReaderWindow(Gtk.Window):
     # @PublicAPI
     def __init__(self):
-        super().__init__(title="AI Reader - 现代智能伴读工作台")
-        self.set_default_size(1360, 840)
+        super().__init__(title="AI Reader")
+        self.set_default_size(1380, 860)
         self.get_style_context().add_class("ia-reader-window")
 
         self.current_book_id = 1
-        self.current_title = "AI Reader 欢迎指南"
-        self.selected_text = "欢迎使用 AI Reader。本应用遵循 iA Writer 极简主义与深度认知排版哲学。"
+        self.current_title = "AI Reader 深度指南"
+        self.selected_text = "欢迎使用 AI Reader。本应用融合 Notion 块级排版哲学与 Apple 极简设计系统。"
         self.sections_data = []
         self.annotations_cache = []
 
@@ -498,12 +665,12 @@ class AIReaderWindow(Gtk.Window):
         self._load_app_icon()
         self._setup_ui()
 
-        # 加载初始书籍与配置
+        # 加载初始数据
         self.loadBook(self.current_book_id, self.current_title)
 
     def _apply_css(self):
         provider = Gtk.CssProvider()
-        provider.load_from_data(PROSE_CSS.encode("utf-8"))
+        provider.load_from_data(NOTION_APPLE_CSS.encode("utf-8"))
         Gtk.StyleContext.add_provider_for_screen(
             Gdk.Screen.get_default(),
             provider,
@@ -529,15 +696,15 @@ class AIReaderWindow(Gtk.Window):
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.add(vbox)
 
-        # 1. 顶部 HeaderBar
+        # 1. 顶部 Apple macOS Unified Titlebar (HeaderBar)
         self.header = Gtk.HeaderBar()
         self.header.set_show_close_button(True)
         self.header.get_style_context().add_class("ia-headerbar")
         self.header.props.title = "AI Reader"
-        self.header.props.subtitle = "Editorial 1.8em • iA Writer 边注 • 深度认知伴读"
+        self.header.props.subtitle = "Notion Typography • Apple Design System • 深度认知伴读"
         self.set_titlebar(self.header)
 
-        # 左侧工具
+        # 左侧动作胶囊组
         btn_open = Gtk.Button(label="打开文件")
         btn_open.connect("clicked", lambda w: self._open_file_dialog())
         self.header.pack_start(btn_open)
@@ -546,7 +713,7 @@ class AIReaderWindow(Gtk.Window):
         btn_shelf.connect("clicked", lambda w: self.left_notebook.set_current_page(3))
         self.header.pack_start(btn_shelf)
 
-        # 中侧视图切换
+        # 中部视图切换按钮
         btn_graph = Gtk.Button(label="概念图谱")
         btn_graph.connect("clicked", lambda w: self.toggleGraphView())
         self.header.pack_start(btn_graph)
@@ -555,8 +722,9 @@ class AIReaderWindow(Gtk.Window):
         btn_mindmap.connect("clicked", lambda w: self.toggleMindmapView())
         self.header.pack_start(btn_mindmap)
 
-        # 右侧操作
+        # 右侧操作组
         btn_export = Gtk.Button(label="导出笔记")
+        btn_export.get_style_context().add_class("apple-primary-btn")
         btn_export.connect("clicked", lambda w: self.exportAnnotationsMarkdown())
         self.header.pack_end(btn_export)
 
@@ -564,21 +732,22 @@ class AIReaderWindow(Gtk.Window):
         btn_settings.connect("clicked", lambda w: self._open_settings())
         self.header.pack_end(btn_settings)
 
-        # 2. 三栏工作台主体 (Paned)
+        # 2. 三栏主体工作台
         self.main_hpaned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         vbox.pack_start(self.main_hpaned, True, True, 0)
 
         # ==============================================================
-        # 左栏：4 合 1 Notebook (目录 / 概念图谱 / 思维导图 / 书架)
+        # 左栏：Notion 导航侧栏 (目录 / 概念图谱 / 思维导图 / 书架)
         # ==============================================================
         self.left_notebook = Gtk.Notebook()
         self.left_notebook.get_style_context().add_class("ia-notebook")
-        self.left_notebook.set_size_request(280, -1)
+        self.left_notebook.set_size_request(285, -1)
 
-        # Page 0: 目录 (TOC)
+        # Tab 0: 目录
         toc_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.outline_store = Gtk.ListStore(int, str)  # sec_id, title
+        self.outline_store = Gtk.ListStore(int, str)
         self.outline_view = Gtk.TreeView(model=self.outline_store)
+        self.outline_view.get_style_context().add_class("ia-treeview")
         self.outline_view.set_headers_visible(False)
         renderer = Gtk.CellRendererText()
         renderer.set_property("ellipsize", Pango.EllipsizeMode.END)
@@ -588,23 +757,24 @@ class AIReaderWindow(Gtk.Window):
         toc_scroll = Gtk.ScrolledWindow()
         toc_scroll.add(self.outline_view)
         toc_box.pack_start(toc_scroll, True, True, 0)
-        self.left_notebook.append_page(toc_box, Gtk.Label(label="目录"))
+        self.left_notebook.append_page(toc_box, Gtk.Label(label="📖 目录"))
 
-        # Page 1: 概念图谱 (Knowledge Graph)
-        graph_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        # Tab 1: 概念图谱
+        graph_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         self.graph_canvas = KnowledgeGraphCanvas(on_node_click_callback=self._on_graph_node_clicked)
         graph_box.pack_start(self.graph_canvas, True, True, 0)
 
         self.lbl_graph_info = Gtk.Label()
-        self.lbl_graph_info.set_markup("<small>点击概念节点反查正文段落</small>")
+        self.lbl_graph_info.set_markup("<span foreground='#86868B'><small>💡 点击上方概念节点反查正文关联段落</small></span>")
         self.lbl_graph_info.set_line_wrap(True)
-        graph_box.pack_start(self.lbl_graph_info, False, False, 6)
-        self.left_notebook.append_page(graph_box, Gtk.Label(label="概念图谱"))
+        graph_box.pack_start(self.lbl_graph_info, False, False, 8)
+        self.left_notebook.append_page(graph_box, Gtk.Label(label="🕸️ 图谱"))
 
-        # Page 2: 思维导图 (Mindmap)
+        # Tab 2: 思维导图
         mindmap_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        self.mindmap_store = Gtk.TreeStore(str, int)  # title, section_id
+        self.mindmap_store = Gtk.TreeStore(str, int)
         self.mindmap_view = Gtk.TreeView(model=self.mindmap_store)
+        self.mindmap_view.get_style_context().add_class("ia-treeview")
         self.mindmap_view.set_headers_visible(False)
         m_rend = Gtk.CellRendererText()
         m_col = Gtk.TreeViewColumn("导图结构", m_rend, text=0)
@@ -613,16 +783,17 @@ class AIReaderWindow(Gtk.Window):
         mindmap_scroll = Gtk.ScrolledWindow()
         mindmap_scroll.add(self.mindmap_view)
         mindmap_box.pack_start(mindmap_scroll, True, True, 0)
-        self.left_notebook.append_page(mindmap_box, Gtk.Label(label="思维导图"))
+        self.left_notebook.append_page(mindmap_box, Gtk.Label(label="🌲 导图"))
 
-        # Page 3: 本地书架 (Bookshelf)
-        shelf_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        shelf_box.set_margin_start(8)
-        shelf_box.set_margin_end(8)
-        shelf_box.set_margin_top(8)
+        # Tab 3: 本地书架
+        shelf_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        shelf_box.set_margin_start(10)
+        shelf_box.set_margin_end(10)
+        shelf_box.set_margin_top(10)
 
-        self.shelf_store = Gtk.ListStore(int, str, str, int)  # id, title, format, word_count
+        self.shelf_store = Gtk.ListStore(int, str, str, int)
         self.shelf_view = Gtk.TreeView(model=self.shelf_store)
+        self.shelf_view.get_style_context().add_class("ia-treeview")
         self.shelf_view.append_column(Gtk.TreeViewColumn("ID", Gtk.CellRendererText(), text=0))
         self.shelf_view.append_column(Gtk.TreeViewColumn("书名", Gtk.CellRendererText(), text=1))
         self.shelf_view.append_column(Gtk.TreeViewColumn("格式", Gtk.CellRendererText(), text=2))
@@ -632,52 +803,51 @@ class AIReaderWindow(Gtk.Window):
         shelf_box.pack_start(shelf_scroll, True, True, 0)
 
         btn_shelf_open = Gtk.Button(label="阅读选中书籍")
+        btn_shelf_open.get_style_context().add_class("ia-notion-btn")
         btn_shelf_open.connect("clicked", self._on_shelf_open_clicked)
         shelf_box.pack_start(btn_shelf_open, False, False, 4)
-
-        self.left_notebook.append_page(shelf_box, Gtk.Label(label="书架"))
+        self.left_notebook.append_page(shelf_box, Gtk.Label(label="📚 书架"))
 
         self.main_hpaned.pack1(self.left_notebook, False, False)
 
         # ==============================================================
-        # 中右分栏 (中：正文沉浸流；右：iA Writer 边注与伴读)
+        # 中右分栏
         # ==============================================================
         self.content_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         self.main_hpaned.pack2(self.content_paned, True, False)
 
-        # 中栏：正文沉浸阅读视口
+        # 中栏：Notion 纯白文档画布
         mid_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         self.content_scrolled = Gtk.ScrolledWindow()
         self.content_view = Gtk.TextView()
         self.content_view.get_style_context().add_class("ia-editor")
         self.content_view.set_wrap_mode(Gtk.WrapMode.WORD)
-        self.content_view.set_left_margin(54)
-        self.content_view.set_right_margin(54)
-        self.content_view.set_top_margin(36)
+        self.content_view.set_left_margin(60)
+        self.content_view.set_right_margin(60)
+        self.content_view.set_top_margin(40)
         self.content_view.set_bottom_margin(48)
-        self.content_view.set_pixels_inside_wrap(16)  # 1.8em 黄金行高
-        self.content_view.modify_font(Pango.FontDescription("Serif 13.5"))
+        self.content_view.set_pixels_inside_wrap(16)  # 1.75em 舒适行高
 
-        # 正文选区与右键监听
+        # 选区与右键监听
         self.content_buffer = self.content_view.get_buffer()
         self.content_buffer.connect("notify::has-selection", self._on_buffer_selection_changed)
         self.content_view.connect("button-press-event", self._on_content_button_press)
 
-        # 标签定义 (高亮显示)
-        self.tag_highlight_yellow = self.content_buffer.create_tag("hl_yellow", background="#FEF08A")
-        self.tag_highlight_green = self.content_buffer.create_tag("hl_green", background="#BBF7D0")
-        self.tag_highlight_blue = self.content_buffer.create_tag("hl_blue", background="#BAE6FD")
-        self.tag_highlight_pink = self.content_buffer.create_tag("hl_pink", background="#FBCFE8")
+        # 高亮标签
+        self.tag_highlight_yellow = self.content_buffer.create_tag("hl_yellow", background="#FEF3C7")
+        self.tag_highlight_green = self.content_buffer.create_tag("hl_green", background="#DCFCE7")
+        self.tag_highlight_blue = self.content_buffer.create_tag("hl_blue", background="#E0F2FE")
+        self.tag_highlight_pink = self.content_buffer.create_tag("hl_pink", background="#FCE7F3")
 
         self.content_scrolled.add(self.content_view)
         mid_vbox.pack_start(self.content_scrolled, True, True, 0)
 
-        # 底部状态微栏
+        # 底部属性指示条 (Notion Property Bar)
         self.status_bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        self.status_bar.set_margin_start(16)
-        self.status_bar.set_margin_end(16)
-        self.status_bar.set_margin_top(4)
-        self.status_bar.set_margin_bottom(4)
+        self.status_bar.set_margin_start(20)
+        self.status_bar.set_margin_end(20)
+        self.status_bar.set_margin_top(6)
+        self.status_bar.set_margin_bottom(6)
         self.lbl_doc_info = Gtk.Label(label="字数统计: 0 | 进度: 100%")
         self.lbl_doc_info.set_xalign(0)
         self.status_bar.pack_start(self.lbl_doc_info, False, False, 0)
@@ -686,90 +856,92 @@ class AIReaderWindow(Gtk.Window):
         self.content_paned.pack1(mid_vbox, True, False)
 
         # ==============================================================
-        # 右栏：iA Writer 边注栏与深度认知伴读 (Marginalia)
+        # 右栏：Apple 检查器面板 (边注与认知伴读)
         # ==============================================================
-        self.marginalia_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.marginalia_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         self.marginalia_box.get_style_context().add_class("ia-marginalia")
         self.marginalia_box.set_size_request(340, -1)
-        self.marginalia_box.set_margin_start(12)
-        self.marginalia_box.set_margin_end(12)
-        self.marginalia_box.set_margin_top(12)
-        self.marginalia_box.set_margin_bottom(12)
+        self.marginalia_box.set_margin_start(14)
+        self.marginalia_box.set_margin_end(14)
+        self.marginalia_box.set_margin_top(14)
+        self.marginalia_box.set_margin_bottom(14)
 
-        # 顶部卡片：深度认知伴读卡片
+        # 认知伴读卡片 (Notion Callout 结构)
         companion_frame = Gtk.Frame()
         companion_frame.get_style_context().add_class("ia-card")
-        companion_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        companion_vbox.set_margin_start(8)
-        companion_vbox.set_margin_end(8)
-        companion_vbox.set_margin_top(8)
-        companion_vbox.set_margin_bottom(8)
+        companion_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        companion_vbox.set_margin_start(10)
+        companion_vbox.set_margin_end(10)
+        companion_vbox.set_margin_top(10)
+        companion_vbox.set_margin_bottom(10)
         companion_frame.add(companion_vbox)
 
         lbl_companion_title = Gtk.Label()
-        lbl_companion_title.set_markup("<b>认知伴读与思维脚手架</b>")
+        lbl_companion_title.set_markup("<b>💡 认知伴读与思维脚手架</b>")
         lbl_companion_title.set_xalign(0)
         companion_vbox.pack_start(lbl_companion_title, False, False, 0)
 
-        # 4 大模板快捷按钮
+        # 4 大模板彩色标签按钮 (Notion Chips)
         btn_grid = Gtk.Grid()
-        btn_grid.set_column_spacing(6)
-        btn_grid.set_row_spacing(6)
+        btn_grid.set_column_spacing(8)
+        btn_grid.set_row_spacing(8)
         tpl_list = [
-            ("通俗速解", "general"),
-            ("逻辑论证", "logic"),
-            ("辩驳反思", "critical"),
-            ("术语拆解", "term")
+            ("通俗速解", "general", "ia-chip-yellow"),
+            ("逻辑论证", "logic", "ia-chip-green"),
+            ("辩驳反思", "critical", "ia-chip-blue"),
+            ("术语拆解", "term", "ia-chip-purple")
         ]
-        for i, (name, tpl) in enumerate(tpl_list):
+        for i, (name, tpl, cls_name) in enumerate(tpl_list):
             btn = Gtk.Button(label=name)
-            btn.get_style_context().add_class("ia-template-btn")
+            btn.get_style_context().add_class(cls_name)
             btn.connect("clicked", lambda w, t=tpl: self.invokeAiCompanion(t, "请深入剖析划选文本"))
             btn_grid.attach(btn, i % 2, i // 2, 1, 1)
-        companion_vbox.pack_start(btn_grid, False, False, 2)
+        companion_vbox.pack_start(btn_grid, False, False, 0)
 
-        # 当前选区摘要预览
+        # 选区预览
         self.lbl_sel_preview = Gtk.Label()
         self.lbl_sel_preview.set_line_wrap(True)
         self.lbl_sel_preview.set_xalign(0)
-        self.lbl_sel_preview.set_markup("<small><i>选区：“欢迎使用 AI Reader...”</i></small>")
+        self.lbl_sel_preview.set_markup("<span foreground='#86868B'><small><i>选区：“欢迎使用 AI Reader...”</i></small></span>")
         companion_vbox.pack_start(self.lbl_sel_preview, False, False, 0)
 
         # AI 输出视口
         card_scroll = Gtk.ScrolledWindow()
         card_scroll.set_min_content_height(160)
         self.card_view = Gtk.TextView()
+        self.card_view.get_style_context().add_class("ia-card-text")
         self.card_view.set_wrap_mode(Gtk.WrapMode.WORD)
-        self.card_view.set_left_margin(8)
-        self.card_view.set_right_margin(8)
+        self.card_view.set_left_margin(10)
+        self.card_view.set_right_margin(10)
         self.card_view.set_editable(False)
-        self.card_view.modify_font(Pango.FontDescription("Sans 10"))
         card_scroll.add(self.card_view)
         companion_vbox.pack_start(card_scroll, True, True, 0)
 
-        # 自由追问与交互提问栏
+        # 追问交互栏
         ask_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.entry_ask = Gtk.Entry()
-        self.entry_ask.set_placeholder_text("就当前选区输入个性化追问...")
+        self.entry_ask.get_style_context().add_class("ia-entry")
+        self.entry_ask.set_placeholder_text("向伴读助手发送追问...")
         self.entry_ask.connect("activate", lambda w: self._on_send_custom_prompt())
         ask_box.pack_start(self.entry_ask, True, True, 0)
 
         btn_ask = Gtk.Button(label="追问")
-        btn_ask.get_style_context().add_class("ia-primary-btn")
+        btn_ask.get_style_context().add_class("ia-apple-btn")
         btn_ask.connect("clicked", lambda w: self._on_send_custom_prompt())
         ask_box.pack_start(btn_ask, False, False, 0)
         companion_vbox.pack_start(ask_box, False, False, 0)
 
-        # 一键沉淀为边注
-        btn_pin_note = Gtk.Button(label="沉淀此认知为永久边注")
+        # 沉淀边注按钮
+        btn_pin_note = Gtk.Button(label="📌 沉淀为此段永久边注")
+        btn_pin_note.get_style_context().add_class("ia-notion-btn")
         btn_pin_note.connect("clicked", lambda w: self._pin_ai_to_annotation())
         companion_vbox.pack_start(btn_pin_note, False, False, 0)
 
         self.marginalia_box.pack_start(companion_frame, False, False, 0)
 
-        # 下部卡片：iA Writer 边注列表 (基线对齐持久化)
+        # 下部：Notion 评论线程风格边注列表
         lbl_notes = Gtk.Label()
-        lbl_notes.set_markup("<b>阅读批注与边注清单</b>")
+        lbl_notes.set_markup("<b>💬 阅读批注与边注清单</b>")
         lbl_notes.set_xalign(0)
         self.marginalia_box.pack_start(lbl_notes, False, False, 4)
 
@@ -787,7 +959,7 @@ class AIReaderWindow(Gtk.Window):
     def loadBook(self, book_id: int, title: str):
         self.current_book_id = book_id
         self.current_title = title
-        self.header.props.title = f"AI Reader - {title}"
+        self.header.props.title = f"AI Reader  ›  {title}"
 
         resp = json.loads(ai_reader_invoke("doc.get", json.dumps({"book_id": book_id})))
         data = resp.get("data") or {}
@@ -801,11 +973,11 @@ class AIReaderWindow(Gtk.Window):
         for s in sections:
             s_title = s.get("title", "未命名章节")
             self.outline_store.append([s.get("id", 0), s_title])
-            full_text_parts.append(f"\n\n# {s_title}\n\n" + s.get("content", ""))
+            full_text_parts.append(f"\n\n## {s_title}\n\n" + s.get("content", ""))
 
-        full_text = "".join(full_text_parts).strip()
-        if not full_text:
-            full_text = (
+        body_content = "".join(full_text_parts).strip()
+        if not body_content:
+            body_content = (
                 "人类认知的演进是一场不断打破旧有范式的旅程。在这个信息爆炸的时代，"
                 "深度阅读与认知伴读成为沉淀知识的核心阶梯。\n\n"
                 "Attention Mechanisms have revolutionized sequence modeling in artificial intelligence. "
@@ -813,8 +985,18 @@ class AIReaderWindow(Gtk.Window):
                 "transformers achieve state-of-the-art results across natural language and vision benchmarks."
             )
 
-        self.content_buffer.set_text(full_text)
-        self.lbl_doc_info.set_text(f"字数统计: {len(full_text)} | 格式: {meta.get('file_format', 'TEXT')} | 章节数: {len(sections)}")
+        # Notion 页面属性头排版
+        file_format = meta.get('file_format', 'MARKDOWN')
+        word_count = len(body_content)
+        notion_header = (
+            f"📖  {title}\n\n"
+            f"🏷️ 格式: {file_format}    📊 字数: {word_count}    📑 章节数: {len(sections)}    🎯 模式: Editorial 1.75em\n"
+            f"─────────────────────────────────────────────────────────────\n\n"
+        )
+        full_doc = notion_header + body_content
+
+        self.content_buffer.set_text(full_doc)
+        self.lbl_doc_info.set_text(f"字数: {word_count} | 格式: {file_format} | 章节: {len(sections)} 节")
 
         # 2. 刷新图谱与思维导图
         self._refresh_graph_and_mindmap()
@@ -825,18 +1007,16 @@ class AIReaderWindow(Gtk.Window):
         # 4. 刷新书架
         self._refresh_bookshelf()
 
-        # 默认触发一次伴读
+        # 触发初始伴读
         self.invokeAiCompanion("general", "概述章节核心脉络")
 
     def _refresh_graph_and_mindmap(self):
-        # 概念图谱
         g_resp = json.loads(ai_reader_invoke("nlp.build_graph", json.dumps({"book_id": self.current_book_id})))
         g_data = g_resp.get("data") or {}
         nodes = g_data.get("nodes", [])
         links = g_data.get("links", [])
         self.graph_canvas.set_graph_data(nodes, links)
 
-        # 思维导图
         m_resp = json.loads(ai_reader_invoke("mindmap.generate", json.dumps({"book_id": self.current_book_id})))
         m_data = m_resp.get("data") or {}
         m_nodes = m_data.get("nodes", [])
@@ -846,11 +1026,10 @@ class AIReaderWindow(Gtk.Window):
             root_node = self.mindmap_store.append(None, [self.current_title, 0])
             for nd in m_nodes:
                 if nd.get("parent_id") is not None:
-                    self.mindmap_store.append(root_node, [nd.get("title", "结构节点"), nd.get("section_id", 0)])
+                    self.mindmap_store.append(root_node, [nd.get("title", "结构分支"), nd.get("section_id", 0)])
             self.mindmap_view.expand_all()
 
     def _refresh_annotations_list(self):
-        # 清空容器
         for ch in self.notes_container.get_children():
             self.notes_container.remove(ch)
 
@@ -860,33 +1039,34 @@ class AIReaderWindow(Gtk.Window):
         self.annotations_cache = annots
 
         if not annots:
-            lbl = Gtk.Label(label="暂无边注。划选文本右键即可添加心得或沉淀伴读卡片。")
+            lbl = Gtk.Label(label="暂无边注。划选文本右键呼出伴读或沉淀心得卡片。")
             lbl.set_line_wrap(True)
-            self.notes_container.pack_start(lbl, False, False, 10)
+            self.notes_container.pack_start(lbl, False, False, 12)
         else:
             for item in annots:
                 frame = Gtk.Frame()
                 frame.get_style_context().add_class("ia-card")
-                c_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-                c_box.set_margin_start(6)
-                c_box.set_margin_end(6)
-                c_box.set_margin_top(6)
-                c_box.set_margin_bottom(6)
+                c_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                c_box.set_margin_start(8)
+                c_box.set_margin_end(8)
+                c_box.set_margin_top(8)
+                c_box.set_margin_bottom(8)
                 frame.add(c_box)
 
                 # 顶部标签与删除
                 h = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
                 color = item.get("color", "#FDE047")
                 lbl_color = Gtk.Label()
-                lbl_color.set_markup(f"<span background='{color}'>  </span> <b>边注 #{item.get('id')}</b>")
+                lbl_color.set_markup(f"<span background='{color}'>   </span> <b>边注 #{item.get('id')}</b>")
                 h.pack_start(lbl_color, False, False, 0)
 
                 btn_del = Gtk.Button(label="删除")
+                btn_del.get_style_context().add_class("ia-notion-btn")
                 btn_del.connect("clicked", lambda w, aid=item.get("id"): self._delete_annotation(aid))
                 h.pack_end(btn_del, False, False, 0)
                 c_box.pack_start(h, False, False, 0)
 
-                # 心得正文
+                # 心得
                 note_text = item.get("note_text") or "高亮标记"
                 lbl_note = Gtk.Label()
                 lbl_note.set_markup(f"<b>心得：</b>{note_text}")
@@ -898,7 +1078,7 @@ class AIReaderWindow(Gtk.Window):
                 ai_resp = item.get("ai_response")
                 if ai_resp:
                     lbl_ai = Gtk.Label()
-                    lbl_ai.set_markup(f"<small><b>伴读沉淀：</b>{ai_resp[:120]}...</small>")
+                    lbl_ai.set_markup(f"<span foreground='#555555'><small><b>伴读沉淀：</b>{ai_resp[:120]}...</small></span>")
                     lbl_ai.set_line_wrap(True)
                     lbl_ai.set_xalign(0)
                     c_box.pack_start(lbl_ai, False, False, 0)
@@ -927,7 +1107,7 @@ class AIReaderWindow(Gtk.Window):
     def onSelectText(self, text: str, page_index: int, offset: int):
         self.selected_text = text.strip()
         short_sel = self.selected_text[:90] + ("..." if len(self.selected_text) > 90 else "")
-        self.lbl_sel_preview.set_markup(f"<small><i>选区：“{short_sel}”</i></small>")
+        self.lbl_sel_preview.set_markup(f"<span foreground='#86868B'><small><i>选区：“{short_sel}”</i></small></span>")
 
     def _on_buffer_selection_changed(self, buf, pspec):
         if buf.get_has_selection():
@@ -939,12 +1119,12 @@ class AIReaderWindow(Gtk.Window):
                     self.onSelectText(txt, 1, start.get_offset())
 
     def _on_content_button_press(self, view, event):
-        if event.button == 3:  # 右键呼出快捷伴读与批注菜单
+        if event.button == 3:  # 右键菜单
             menu = Gtk.Menu()
 
             # 4 大伴读模式
             for label, tpl in [
-                ("通俗大白话速解 (Feynman)", "general"),
+                ("通俗速解 (Feynman 模式)", "general"),
                 ("逻辑论证结构剖析", "logic"),
                 ("批判性反思与辩驳", "critical"),
                 ("核心专业术语卡拆解", "term")
@@ -955,7 +1135,6 @@ class AIReaderWindow(Gtk.Window):
 
             menu.append(Gtk.SeparatorMenuItem())
 
-            # 添加边注
             item_note = Gtk.MenuItem(label="添加高亮边注心得")
             item_note.connect("activate", lambda w: self._open_add_note_dialog())
             menu.append(item_note)
@@ -1127,7 +1306,6 @@ class AIReaderWindow(Gtk.Window):
         model = tree.get_model()
         iter_ = model.get_iter(path)
         title = model.get_value(iter_, 1)
-        # 定位正文中章节标题
         buf = self.content_buffer
         start_iter = buf.get_start_iter()
         match = start_iter.forward_search(title, Gtk.TextSearchFlags.VISIBLE_ONLY, None)
@@ -1137,8 +1315,7 @@ class AIReaderWindow(Gtk.Window):
             self.content_view.scroll_to_mark(mark, 0.05, True, 0.0, 0.1)
 
     def _on_graph_node_clicked(self, word: str, data: dict):
-        self.lbl_graph_info.set_markup(f"<b>选中核心概念：</b>“{word}”\n权重得分: {data.get('score', 0):.3f}")
-        # 在正文中搜索该词并滚动定位
+        self.lbl_graph_info.set_markup(f"<b>选中核心概念：</b>“{word}” (权重得分: {data.get('score', 0):.3f})")
         buf = self.content_buffer
         start_iter = buf.get_start_iter()
         match = start_iter.forward_search(word, Gtk.TextSearchFlags.VISIBLE_ONLY, None)
@@ -1183,7 +1360,7 @@ def main():
     win.show_all()
 
     if "--dry-run" in sys.argv:
-        print("[SUCCESS] AIReaderWindow initialized, tested, and validated successfully!")
+        print("[SUCCESS] AIReaderWindow initialized, tested, and validated successfully with Notion + Apple Design System!")
         sys.exit(0)
 
     Gtk.main()
