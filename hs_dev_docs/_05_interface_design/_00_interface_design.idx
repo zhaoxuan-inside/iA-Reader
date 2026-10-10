@@ -1,0 +1,2 @@
+{"version": "1.0", "category": "interface_design", "root": "_05_interface_design"}
+{"id": "if_001_reader_ffi", "title": "AI Reader 跨语言 FFI 接口契约说明书", "path": "_01_reader_core/_01_reader_ffi_interface_design.md", "status": "active", "digest": "1c33a8dc"}

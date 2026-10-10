@@ -1,0 +1,2 @@
+{"version": "1.0", "category": "call_chain", "root": "_07_call_chain"}
+{"id": "call_chain_001_reader", "title": "AI Reader 全链路调用拓扑与方法映射", "path": "_01_reader_core/_01_reader_call_chains.md", "status": "active", "digest": "961095a2"}

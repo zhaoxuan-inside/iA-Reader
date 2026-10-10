@@ -1,0 +1,5 @@
+{"version": "1.0", "category": "tech_select", "root": "_02_tech_select"}
+{"id": "tech_frontend", "title": "前端技术选型报告(Flutter)", "path": "_01_frontend_tech_select.md", "status": "active", "digest": "20646de9"}
+{"id": "tech_backend", "title": "后端与核心引擎技术选型报告(Rust)", "path": "_02_backend_tech_select.md", "status": "active", "digest": "88ecbdae"}
+{"id": "tech_storage", "title": "数据持久化技术选型报告(SQLite)", "path": "_03_storage_tech_select.md", "status": "active", "digest": "ba1be721"}
+{"id": "tech_bridge", "title": "跨语言FFI协议技术选型报告", "path": "_04_bridge_protocol_tech_select.md", "status": "active", "digest": "f757022b"}

@@ -1,0 +1,128 @@
+{
+  "contract_name": "reader_ffi_contract",
+  "version": "1.0.0",
+  "actions": {
+    "doc.parse": {
+      "request_example": {
+        "file_path": "/mock/books/sample.epub"
+      },
+      "response_example": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "book_id": 1,
+          "title": "深度学习导论",
+          "author": "张三",
+          "format": "epub",
+          "total_pages": 320,
+          "sections_count": 18
+        },
+        "metrics": {
+          "duration_ms": 12.5
+        }
+      }
+    },
+    "nlp.extract_keywords": {
+      "request_example": {
+        "book_id": 1,
+        "top_n": 10
+      },
+      "response_example": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "keywords": [
+            { "id": 1, "word": "注意力机制", "level": "book", "tfidf_score": 0.85, "textrank_score": 0.92, "frequency": 45 },
+            { "id": 2, "word": "残差网络", "level": "book", "tfidf_score": 0.78, "textrank_score": 0.88, "frequency": 38 }
+          ]
+        },
+        "metrics": {
+          "duration_ms": 45.2
+        }
+      }
+    },
+    "nlp.build_graph": {
+      "request_example": {
+        "book_id": 1,
+        "min_co_occurrence": 2
+      },
+      "response_example": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "nodes": [ { "id": 1, "name": "注意力机制", "val": 45 }, { "id": 2, "name": "残差网络", "val": 38 } ],
+          "links": [ { "source": 1, "target": 2, "weight": 0.65, "pmi": 2.4 } ]
+        },
+        "metrics": {
+          "duration_ms": 28.0
+        }
+      }
+    },
+    "mindmap.generate": {
+      "request_example": {
+        "book_id": 1
+      },
+      "response_example": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "root": {
+            "id": 1,
+            "title": "深度学习导论",
+            "children": [
+              { "id": 2, "title": "第一章 神经网络基础", "section_id": 1, "keywords": ["感知机", "反向传播"] }
+            ]
+          }
+        },
+        "metrics": {
+          "duration_ms": 8.3
+        }
+      }
+    },
+    "annotation.save": {
+      "request_example": {
+        "book_id": 1,
+        "section_id": 1,
+        "color": "#FFE066",
+        "style": "margin_note",
+        "note_text": "此处是Transformer核心公式",
+        "anchor": {
+          "page": 12,
+          "char_offset_start": 450,
+          "char_offset_end": 520,
+          "selected_text": "Attention(Q,K,V)"
+        }
+      },
+      "response_example": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "annotation_id": 1,
+          "status": "saved"
+        },
+        "metrics": {
+          "duration_ms": 5.1
+        }
+      }
+    },
+    "ai.companion_ask": {
+      "request_example": {
+        "book_id": 1,
+        "template_type": "logic",
+        "selected_text": "在深度模型中，残差连接解决了梯度消失问题...",
+        "prompt": "请用逻辑三段论分析作者的前提与推导"
+      },
+      "response_example": {
+        "code": 0,
+        "message": "success",
+        "data": {
+          "response": "【前提】随着网络深度增加，梯度指数级衰减；【推导】残差网络引入恒等映射；【结论】打破网络退化瓶颈。",
+          "latency_ms": 280.0
+        },
+        "metrics": {
+          "duration_ms": 285.0
+        }
+      }
+    }
+  }
+}

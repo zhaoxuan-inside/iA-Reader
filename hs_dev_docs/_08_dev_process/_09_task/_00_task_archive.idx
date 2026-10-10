@@ -1,0 +1,3 @@
+{"version": "1.0", "category": "task_archive", "root": "_09_task"}
+{"id": "task_01_backend_core_engine", "title": "实现 Rust 核心计算引擎、SQLite 存储与六元组运行时", "path": "_02_task_detail/_01_task_01_backend_core_engine/_00_task_detail.md", "status": "COMPLETED", "digest": "44767cb5", "updated_at": "2026-10-10T03:58:13Z"}
+{"id": "task_02_frontend_flutter_ui", "title": "实现 Flutter 展现层、双模阅读、边注与自适应交互", "path": "_02_task_detail/_01_task_02_frontend_flutter_ui/_00_task_detail.md", "status": "COMPLETED", "digest": "7b2b06f4", "updated_at": "2026-10-10T03:59:59Z"}

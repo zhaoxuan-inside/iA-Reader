@@ -1,0 +1,2 @@
+{"version": "1.0", "category": "db_schema", "root": "_04_db_schema"}
+{"id": "db_001_reader_schema", "title": "AI Reader 核心数据库设计说明书", "path": "_01_reader_core/_01_reader_db_schema_design.md", "status": "active", "digest": "0d44fae5"}

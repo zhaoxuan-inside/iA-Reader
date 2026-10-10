@@ -1,0 +1,11 @@
+# .gitignore
+*.pyc
+__pycache__/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.DS_Store
+build/
+target/
+.dart_tool/

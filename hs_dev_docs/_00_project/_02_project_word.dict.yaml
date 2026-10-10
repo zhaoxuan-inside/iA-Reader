@@ -1,0 +1,87 @@
+# AI Reader 统一项目术语词典 (Canonical Project Dictionary)
+version: "2.0.0"
+updated_at: "2026-10-10"
+
+terms:
+  # 文档域 (Document Domain)
+  - term: "书籍元数据"
+    en_name: "book_meta"
+    abbr: "bk_meta"
+    scope: "document_domain"
+    forbidden_aliases: ["book_info", "book_detail"]
+    description: "书籍基本属性（ID、标题、作者、哈希、格式、总页数、阅读进度等）"
+
+  - term: "书籍章节"
+    en_name: "book_section"
+    abbr: "bk_sec"
+    scope: "document_domain"
+    forbidden_aliases: ["chapter", "section_item"]
+    description: "文档目录层级与章节实体"
+
+  - term: "句子节点"
+    en_name: "sentence_node"
+    abbr: "sent_node"
+    scope: "document_domain"
+    forbidden_aliases: ["phrase", "sentence_item"]
+    description: "文档中最小可独立分析和高亮的句子粒度语义单元"
+
+  # 概念与NLP域 (NLP & Knowledge Graph Domain)
+  - term: "关键词节点"
+    en_name: "keyword_node"
+    abbr: "kw_node"
+    scope: "nlp_domain"
+    forbidden_aliases: ["tag", "word_node"]
+    description: "通过 TF-IDF 与 TextRank 提取并赋予权重的概念词节点"
+
+  - term: "关键词关联关系"
+    en_name: "keyword_relation"
+    abbr: "kw_rel"
+    scope: "nlp_domain"
+    forbidden_aliases: ["edge", "word_link"]
+    description: "基于滑动窗口共现矩阵与 PMI 算法计算的关键词边权重关联"
+
+  # 思维导图域 (Mindmap Domain)
+  - term: "思维导图节点"
+    en_name: "mindmap_node"
+    abbr: "mm_node"
+    scope: "mindmap_domain"
+    forbidden_aliases: ["tree_node", "graph_node"]
+    description: "基于文档目录树 AST 与章节核心词生成的结构化可折叠导图节点"
+
+  # 边注与批注域 (Annotation & Margin Domain)
+  - term: "文本批注与边注"
+    en_name: "annotation"
+    abbr: "annot"
+    scope: "annotation_domain"
+    forbidden_aliases: ["note", "comment", "margin_note"]
+    description: "与原文段落基线对齐的边注、下划线与高亮批注"
+
+  - term: "文本空间锚点"
+    en_name: "text_anchor"
+    abbr: "txt_anc"
+    scope: "annotation_domain"
+    forbidden_aliases: ["pos", "range"]
+    description: "包含字符起止偏移量、页码与几何 Bounding Box 的定位元组"
+
+  # AI 认知伴读域 (AI Companion Domain)
+  - term: "认知伴读模板"
+    en_name: "cognitive_template"
+    abbr: "cog_tpl"
+    scope: "ai_domain"
+    forbidden_aliases: ["ai_prompt", "reading_template"]
+    description: "通俗解读(general)、逻辑结构(logic)、批判辩驳(critical)、术语剖析(term) 4大伴读模板"
+
+  - term: "AI 对话会话"
+    en_name: "ai_conversation"
+    abbr: "ai_conv"
+    scope: "ai_domain"
+    forbidden_aliases: ["chat_session", "qa_dialog"]
+    description: "基于特定选区段落与上下文的多轮伴读问答历史"
+
+  # 通用协议与信封
+  - term: "统一调用信封"
+    en_name: "invoke_envelope"
+    abbr: "env"
+    scope: "bridge_protocol"
+    forbidden_aliases: ["response_wrapper", "result_packet"]
+    description: "包含 code, message, data, metrics 的通用 FFI 数据传输载荷"
