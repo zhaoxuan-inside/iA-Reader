@@ -48,11 +48,16 @@ def package_linux():
     shutil.copy(real_bin, target_bin)
     make_executable(target_bin)
     
-    # 复制 backend 运行时模块
+    # 复制 backend 运行时模块与 gui_workbench
     target_backend = app_dir / "backend"
     if target_backend.exists():
         shutil.rmtree(target_backend)
     shutil.copytree(ROOT / "backend", target_backend)
+
+    if (ROOT / "linux/gui_workbench.py").exists():
+        shutil.copy(ROOT / "linux/gui_workbench.py", app_dir / "gui_workbench.py")
+        (app_dir / "linux").mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / "linux/gui_workbench.py", app_dir / "linux/gui_workbench.py")
     
     lib_dir = app_dir / "lib"
     lib_dir.mkdir(parents=True, exist_ok=True)

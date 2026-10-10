@@ -4,6 +4,18 @@
   "release_timestamp": "2026-10-10T12:00:00Z",
   "packages": [
     {
+      "file": "ai-reader-3.0.0-1-x86_64.pkg.tar.zst",
+      "size_bytes": 59780,
+      "sha256": "61a4107ed6553245d58c405a88ec5fa71e94ac294db60bce048c1c9434098adf",
+      "platform": "ai-reader-3.0.0-1-x86_64.pkg.tar.zst"
+    },
+    {
+      "file": "ai-reader_3.0.0_amd64.deb",
+      "size_bytes": 59594,
+      "sha256": "b952cfcdc4e45f2758b78545948a98a057c2d6faa33765d9cabaa4c36cf895b5",
+      "platform": "ai-reader_3.0.0_amd64.deb"
+    },
+    {
       "file": "linux/AI_Reader-3.0.0-x86_64.AppImage",
       "size_bytes": 89,
       "sha256": "1bed65786cfba0ce313c0f8e4c30c26ad75ec4c619a5ab06b5957cbaf71998ca",
@@ -11,8 +23,8 @@
     },
     {
       "file": "linux/ai-reader-3.0.0-1-x86_64.pkg.tar.zst",
-      "size_bytes": 52980,
-      "sha256": "37de625ea581ee1a88e7d01fd016fa4f867ddfde1a94903163e7df26e24aee64",
+      "size_bytes": 59780,
+      "sha256": "61a4107ed6553245d58c405a88ec5fa71e94ac294db60bce048c1c9434098adf",
       "platform": "linux"
     },
     {
@@ -23,8 +35,8 @@
     },
     {
       "file": "linux/ai-reader_3.0.0_amd64.deb",
-      "size_bytes": 52948,
-      "sha256": "9b6089584f75c890d7d57fd20cf9a04b7be662df7fc64f96641ace7756d19fcf",
+      "size_bytes": 59594,
+      "sha256": "b952cfcdc4e45f2758b78545948a98a057c2d6faa33765d9cabaa4c36cf895b5",
       "platform": "linux"
     }
   ]

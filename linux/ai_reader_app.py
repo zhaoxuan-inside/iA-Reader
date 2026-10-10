@@ -242,10 +242,39 @@ def main():
     p_inv.add_argument("--payload", default="{}", help="JSON payload string")
     p_inv.add_argument("--pretty", action="store_true", help="Pretty-print JSON response")
 
+    # workbench / gui
+    p_wb = subparsers.add_parser("workbench", help="Launch interactive iA Writer GUI reading workbench")
+    p_wb.add_argument("--port", type=int, default=8765, help="Port to bind server")
+    p_wb.add_argument("--no-browser", action="store_true", help="Do not open browser automatically")
+
+    # 如果系统通过桌面直接传入单个已存在文档路径 (例如从文件管理器双击文件)
+    if len(sys.argv) == 2 and os.path.exists(sys.argv[1]) and not sys.argv[1].startswith("-"):
+        doc_path = str(Path(sys.argv[1]).resolve())
+        print(f"[*] Opening document in AI Reader: {doc_path}")
+        ai_reader_invoke("doc.parse", json.dumps({"file_path": doc_path}))
+        try:
+            from linux.gui_workbench import start_workbench_server
+        except ImportError:
+            from gui_workbench import start_workbench_server
+        start_workbench_server(open_browser=True)
+        return
+
     args = parser.parse_args()
     if not args.command:
-        parser.print_help()
-        sys.exit(0)
+        # 桌面图标双击启动或无参数启动：自动拉起沉浸式阅读工作台 GUI
+        try:
+            from linux.gui_workbench import start_workbench_server
+        except ImportError:
+            from gui_workbench import start_workbench_server
+        start_workbench_server(open_browser=True)
+        return
+
+    def handle_workbench(a):
+        try:
+            from linux.gui_workbench import start_workbench_server
+        except ImportError:
+            from gui_workbench import start_workbench_server
+        start_workbench_server(port=a.port, open_browser=not a.no_browser)
 
     handlers = {
         "parse": handle_parse,
@@ -257,6 +286,7 @@ def main():
         "ask": handle_ask,
         "annotations": handle_annotations,
         "invoke": handle_invoke,
+        "workbench": handle_workbench,
     }
     handlers[args.command](args)
 

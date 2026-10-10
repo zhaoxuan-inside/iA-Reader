@@ -358,10 +358,19 @@ class StorageManager:
     def save_annotation(self, a: Dict[str, Any]) -> int:
         conn = self.get_connection()
         cur = conn.cursor()
+        book_id = a.get("book_id", 1)
+        cur.execute("SELECT id FROM book_meta WHERE id = ?", (book_id,))
+        if not cur.fetchone():
+            cur.execute("""
+                INSERT INTO book_meta (id, title, author, file_path, file_hash, format)
+                VALUES (?, '即时阅读会话文档', 'AI Reader', ?, 'hash_temp_session', 'txt')
+            """, (book_id, f"temp_session_{book_id}.txt"))
+            conn.commit()
+
         cur.execute("""
             INSERT INTO annotation (book_id, section_id, color, style, note_text, anchor_json, ai_response, is_del, version)
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)
-        """, (a["book_id"], a.get("section_id"), a.get("color", "#FFE066"), a.get("style", "highlight"), a.get("note_text"), a.get("anchor_json", "{}"), a.get("ai_response")))
+        """, (book_id, a.get("section_id"), a.get("color", "#FFE066"), a.get("style", "highlight"), a.get("note_text"), a.get("anchor_json", "{}"), a.get("ai_response")))
         conn.commit()
         annot_id = cur.lastrowid
         conn.close()
@@ -384,10 +393,19 @@ class StorageManager:
     def save_ai_conversation(self, conv: Dict[str, Any]) -> int:
         conn = self.get_connection()
         cur = conn.cursor()
+        book_id = conv.get("book_id", 1)
+        cur.execute("SELECT id FROM book_meta WHERE id = ?", (book_id,))
+        if not cur.fetchone():
+            cur.execute("""
+                INSERT INTO book_meta (id, title, author, file_path, file_hash, format)
+                VALUES (?, '即时阅读会话文档', 'AI Reader', ?, 'hash_temp_session', 'txt')
+            """, (book_id, f"temp_session_{book_id}.txt"))
+            conn.commit()
+
         cur.execute("""
             INSERT INTO ai_conversation (book_id, section_id, template_type, prompt, response, latency_ms, is_del, version)
             VALUES (?, ?, ?, ?, ?, ?, 0, 1)
-        """, (conv["book_id"], conv.get("section_id"), conv.get("template_type", "general"), conv["prompt"], conv["response"], conv.get("latency_ms", 0.0)))
+        """, (book_id, conv.get("section_id"), conv.get("template_type", "general"), conv["prompt"], conv["response"], conv.get("latency_ms", 0.0)))
         conn.commit()
         conv_id = cur.lastrowid
         conn.close()
