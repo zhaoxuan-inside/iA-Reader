@@ -8,6 +8,9 @@ import 'core/widgets/window_controls.dart';
 import 'core/window/window_channel.dart';
 import 'features/reader/presentation/controllers/focus_mode_controller.dart';
 import 'features/selection_pill/presentation/floating_action_pill.dart';
+import 'features/selection_pill/domain/pill_anchor.dart';
+import 'features/annotation/domain/annotation_item.dart';
+import 'features/annotation/domain/annotation_span_builder.dart';
 import 'features/companion/presentation/companion_drawer.dart';
 import 'features/mobile_sheet/presentation/mobile_companion_sheet.dart';
 import 'features/toc_mindmap/presentation/toc_mindmap_drawer.dart';
@@ -132,8 +135,10 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   List<Map<String, dynamic>> _paragraphs = [];
   // 段落锚点：划词胶囊定位到选区所在段落/选区矩形旁
   final Map<String, GlobalKey> _paraKeys = {};
-  final Set<String> _highlightedParagraphIds = {};
-  final Map<String, List<String>> _paragraphAnnotations = {};
+  // 选区级标注（task_12 D5）：含高亮区间与边注，经 annotation.* FFI 持久化
+  final List<AnnotationItem> _annotations = [];
+  // 默认高亮色：DESIGN.md highlight-mark 琥珀黄（渲染时叠加 35% 透明度）
+  static const String _defaultHighlightHex = '#CA8A04';
 
   // 抽屉状态：默认全关闭，给用户最纯净的开屏阅读世界
   bool _isTocOpen = false;
@@ -144,6 +149,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   Offset? _selectionPosition;
   String? _selectedTextCache;
   String? _selectedParagraphIdCache;
+  // 选区在段落文本内的偏移（高亮/标注按区间锚定的数据源）
+  int? _selStartCache;
+  int? _selEndCache;
+  // 最近指针全局坐标：胶囊跟随鼠标位置锚定（task_12 D1）
+  Offset? _lastPointerGlobal;
 
   @override
   void initState() {
@@ -254,16 +264,18 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
       });
     }
 
-    // 4. 加载已有边注
+    // 4. 加载已有标注（高亮区间 + 边注），回填选区级渲染
     final annRes = await widget.bridge.invoke('annotation.list', {'book_id': bookId});
     if (annRes.isSuccess) {
       final anns = (annRes.data['annotations'] as List<dynamic>?) ?? [];
-      final noteMap = <String, List<String>>{};
-      for (final a in anns) {
-        final pId = a['paragraph_id']?.toString() ?? 'p1';
-        noteMap.putIfAbsent(pId, () => []).add(a['note_text'] ?? '');
-      }
-      setState(() => _paragraphAnnotations.addAll(noteMap));
+      setState(() {
+        _annotations
+          ..clear()
+          ..addAll(anns
+              .whereType<Map<String, dynamic>>()
+              .map(AnnotationItem.fromListRow)
+              .where((a) => a.paragraphId.isNotEmpty));
+      });
     }
   }
 
@@ -291,16 +303,59 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     }
   }
 
-  void _handleHighlight() {
-    if (_selectedParagraphIdCache != null) {
-      setState(() {
-        _highlightedParagraphIds.add(_selectedParagraphIdCache!);
-        _selectionPosition = null;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已添加高亮标记'), duration: Duration(milliseconds: 1200)),
-      );
-    }
+  /// 高亮所选子串（task_12 D5）：按选区偏移锚定并持久化，不再整段着色
+  Future<void> _handleHighlight() async {
+    final pId = _selectedParagraphIdCache;
+    final start = _selStartCache;
+    final end = _selEndCache;
+    _clearSelection();
+    if (pId == null || start == null || end == null || end <= start) return;
+
+    final paragraph = _paragraphs.firstWhere(
+      (p) => p['id'] == pId,
+      orElse: () => {'section_id': _activeSectionId},
+    );
+    final sectionId = (paragraph['section_id'] as int?) ?? _activeSectionId;
+
+    final res = await widget.bridge.invoke('annotation.save', {
+      'book_id': _currentBookId,
+      'section_id': sectionId,
+      'paragraph_id': pId,
+      'style': 'highlight',
+      'color': _defaultHighlightHex,
+      'anchor': {
+        'paragraph_id': pId,
+        'section_id': sectionId,
+        'start': start,
+        'end': end,
+      },
+    });
+
+    if (!mounted) return;
+    setState(() {
+      _annotations.add(AnnotationItem(
+        id: res.data['annotation_id']?.toString() ??
+            'local_${DateTime.now().millisecondsSinceEpoch}',
+        bookId: _currentBookId,
+        sectionId: sectionId,
+        paragraphId: pId,
+        startOffset: start,
+        endOffset: end,
+        style: AnnotationStyle.highlight,
+        colorHex: _defaultHighlightHex,
+      ));
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已高亮所选内容'), duration: Duration(milliseconds: 1200)),
+    );
+  }
+
+  void _clearSelection() {
+    _selectionPosition = null;
+    _selectedTextCache = null;
+    _selectedParagraphIdCache = null;
+    _selStartCache = null;
+    _selEndCache = null;
   }
 
   void _focusNextParagraph() {
@@ -380,7 +435,6 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     final borderColor = isDark ? ReaderTheme.darkBorderSubtle : ReaderTheme.lightBorderSubtle;
     final textSecondary = isDark ? ReaderTheme.darkTextSecondary : ReaderTheme.lightTextSecondary;
     final accentColor = isDark ? ReaderTheme.darkAccentFocus : ReaderTheme.lightAccentFocus;
-    final highlightBg = isDark ? ReaderTheme.darkHighlightMark : ReaderTheme.lightHighlightMark;
 
     return Shortcuts(
       shortcuts: <LogicalKeySet, Intent>{
@@ -416,7 +470,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
               }
               _focusController.exitFocusMode();
               _focusController.setCompanionDrawerOpen(false);
-              setState(() => _selectionPosition = null);
+              setState(_clearSelection);
               return null;
             },
           ),
@@ -463,11 +517,10 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                             child: AnimatedOpacity(
                               duration: ReaderTheme.chromeFadeDuration,
                               opacity: _isHeaderVisible ? 1.0 : 0.0,
-                              // 应用内顶栏即唯一标题栏：空白区域拖拽移动窗口（buttons 各自响应点击）
-                              child: GestureDetector(
-                                behavior: HitTestBehavior.translucent,
-                                onPanStart: (_) => WindowChannel.beginDrag(),
-                                child: Container(
+                              // 应用内顶栏即唯一标题栏：中部标题区按下即拖（task_12 D2：
+                              // onPanStart 有位移斜率门槛且错过 GTK 隐式抓取时机，拖动失效；
+                              // 改为 onPointerDown 立即 beginDrag），双击切换最大化
+                              child: Container(
                                 height: 44.0,
                                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                                 decoration: BoxDecoration(
@@ -498,16 +551,23 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                       ],
                                     ),
                                     Expanded(
-                                      child: Center(
-                                        child: Text(
-                                          _currentBookTitle,
-                                          style: TextStyle(
-                                            fontSize: 13.0,
-                                            color: textSecondary,
-                                            fontWeight: FontWeight.w500,
-                                            letterSpacing: 0.2,
+                                      child: GestureDetector(
+                                        onDoubleTap: toggleWindowMaximize,
+                                        child: Listener(
+                                          behavior: HitTestBehavior.translucent,
+                                          onPointerDown: (_) => WindowChannel.beginDrag(),
+                                          child: Center(
+                                            child: Text(
+                                              _currentBookTitle,
+                                              style: TextStyle(
+                                                fontSize: 13.0,
+                                                color: textSecondary,
+                                                fontWeight: FontWeight.w500,
+                                                letterSpacing: 0.2,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
-                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ),
@@ -557,7 +617,6 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                   ],
                                 ),
                               ),
-                              ),
                             ),
                           ),
 
@@ -572,7 +631,13 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                       constraints: const BoxConstraints(
                                         maxWidth: ReaderTheme.readingGoldenWidth,
                                       ),
-                                      child: ListView.builder(
+                                      child: Listener(
+                                        behavior: HitTestBehavior.translucent,
+                                        // 记录指针轨迹：胶囊跟随鼠标位置锚定（task_12 D1）
+                                        onPointerDown: (e) => _lastPointerGlobal = e.position,
+                                        onPointerMove: (e) => _lastPointerGlobal = e.position,
+                                        onPointerUp: (e) => _lastPointerGlobal = e.position,
+                                        child: ListView.builder(
                                         controller: _scrollController,
                                         padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 56.0),
                                         itemCount: _paragraphs.length + 1,
@@ -614,8 +679,27 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                           final paraKey = _paraKeys.putIfAbsent(
                                               pId, () => GlobalKey(debugLabel: 'para_$pId'));
                                           final opacity = _focusController.getParagraphOpacity(pId);
-                                          final isHighlighted = _highlightedParagraphIds.contains(pId);
-                                          final notes = _paragraphAnnotations[pId];
+                                          // 选区级内联高亮（task_12 D5）：该段落全部区间标注
+                                          final paragraphRanges = _annotations
+                                              .where((a) => a.paragraphId == pId && a.hasRange)
+                                              .map((a) => AnnotationRange(
+                                                    start: a.startOffset!,
+                                                    end: a.endOffset!,
+                                                    style: AnnotationStyle.highlight,
+                                                    color: annotationColorFromHex(a.colorHex)
+                                                        .withOpacity(0.35),
+                                                  ))
+                                              .toList();
+                                          final paragraphSpan = AnnotationSpanBuilder.build(
+                                            text: text,
+                                            ranges: paragraphRanges,
+                                            baseStyle: Theme.of(context).textTheme.bodyLarge,
+                                          );
+                                          final notes = _annotations
+                                              .where((a) =>
+                                                  a.paragraphId == pId &&
+                                                  (a.noteText?.isNotEmpty ?? false))
+                                              .toList();
 
                                           return AnimatedOpacity(
                                             duration: ReaderTheme.focusTransitionDuration,
@@ -623,21 +707,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             child: Container(
                                               key: paraKey,
                                               margin: const EdgeInsets.only(bottom: ReaderTheme.paragraphSpacing),
-                                              padding: isHighlighted
-                                                  ? const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0)
-                                                  : EdgeInsets.zero,
-                                              decoration: isHighlighted
-                                                  ? BoxDecoration(
-                                                      color: highlightBg,
-                                                      borderRadius: BorderRadius.circular(4.0),
-                                                    )
-                                                  : null,
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
-                                                  SelectableText(
-                                                    text,
-                                                    style: Theme.of(context).textTheme.bodyLarge,
+                                                  SelectableText.rich(
+                                                    paragraphSpan,
                                                     onSelectionChanged: (selection, cause) {
                                                       if (!selection.isCollapsed) {
                                                         final selectedStr = selection.textInside(text);
@@ -645,13 +719,24 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                           setState(() {
                                                             _selectedTextCache = selectedStr;
                                                             _selectedParagraphIdCache = pId;
+                                                            _selStartCache = selection.start;
+                                                            _selEndCache = selection.end;
+                                                            // 胶囊跟随鼠标位置；键盘/程序化选择回退选区末矩形
                                                             _selectionPosition =
-                                                                _computePillPosition(pId, selection);
+                                                                _lastPointerGlobal != null
+                                                                    ? anchorPillAtPointer(
+                                                                        _lastPointerGlobal!,
+                                                                        MediaQuery.of(context).size)
+                                                                    : _computePillPosition(pId, selection);
                                                           });
                                                         }
                                                       } else if (_selectionPosition != null) {
                                                         // 在本文内点击收起选区时同步收起胶囊
-                                                        setState(() => _selectionPosition = null);
+                                                        setState(() {
+                                                          _selectionPosition = null;
+                                                          _selStartCache = null;
+                                                          _selEndCache = null;
+                                                        });
                                                       }
                                                     },
                                                   ),
@@ -674,6 +759,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             ),
                                           );
                                         },
+                                      ),
                                       ),
                                     ),
                                   ),
@@ -736,15 +822,29 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                 },
                                 onSaveAnnotation: (note) async {
                                   final targetPid = _focusController.activeParagraphId ?? 'p1';
-                                  await widget.bridge.invoke('annotation.save', {
+                                  final para = _paragraphs.firstWhere(
+                                    (p) => p['id'] == targetPid,
+                                    orElse: () => {'section_id': _activeSectionId},
+                                  );
+                                  final res = await widget.bridge.invoke('annotation.save', {
                                     'book_id': _currentBookId,
-                                    'section_id': _activeSectionId,
+                                    'section_id': (para['section_id'] as int?) ?? _activeSectionId,
                                     'paragraph_id': targetPid,
+                                    'style': 'margin_note',
                                     'note_text': note,
                                     'color': '#007AFF',
                                   });
+                                  if (!mounted) return;
                                   setState(() {
-                                    _paragraphAnnotations.putIfAbsent(targetPid, () => []).add(note);
+                                    _annotations.add(AnnotationItem(
+                                      id: res.data['annotation_id']?.toString() ?? '',
+                                      bookId: _currentBookId,
+                                      sectionId: _activeSectionId,
+                                      paragraphId: targetPid,
+                                      style: AnnotationStyle.marginNote,
+                                      colorHex: '#007AFF',
+                                      noteText: note,
+                                    ));
                                   });
                                 },
                                 onAskFollowUp: (q) async {
@@ -766,8 +866,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           ),
                         ),
 
-                      // 划词快速伴读悬浮胶囊 (DESIGN.md §4.2: 5 按钮；锚定选区，点外部即收)
-                      if (_selectionPosition != null)
+                      // 划词快速伴读悬浮胶囊 (DESIGN.md §4.2: 5 按钮；锚定鼠标位置，点外部即收)
                       if (_selectionPosition != null)
                         Positioned(
                           top: _selectionPosition!.dy,
@@ -775,11 +874,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           child: TapRegion(
                             onTapOutside: (_) {
                               if (_selectionPosition != null) {
-                                setState(() {
-                                  _selectionPosition = null;
-                                  _selectedTextCache = null;
-                                  _selectedParagraphIdCache = null;
-                                });
+                                setState(_clearSelection);
                               }
                             },
                             child: FloatingActionPill(
@@ -807,15 +902,29 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           },
                           onSaveAnnotation: () async {
                             final targetPid = _focusController.activeParagraphId ?? 'p1';
-                            await widget.bridge.invoke('annotation.save', {
+                            final para = _paragraphs.firstWhere(
+                              (p) => p['id'] == targetPid,
+                              orElse: () => {'section_id': _activeSectionId},
+                            );
+                            final res = await widget.bridge.invoke('annotation.save', {
                               'book_id': _currentBookId,
-                              'section_id': _activeSectionId,
+                              'section_id': (para['section_id'] as int?) ?? _activeSectionId,
                               'paragraph_id': targetPid,
+                              'style': 'margin_note',
                               'note_text': _activeAnalysisText,
                               'color': '#007AFF',
                             });
+                            if (!mounted) return;
                             setState(() {
-                              _paragraphAnnotations.putIfAbsent(targetPid, () => []).add(_activeAnalysisText);
+                              _annotations.add(AnnotationItem(
+                                id: res.data['annotation_id']?.toString() ?? '',
+                                bookId: _currentBookId,
+                                sectionId: _activeSectionId,
+                                paragraphId: targetPid,
+                                style: AnnotationStyle.marginNote,
+                                colorHex: '#007AFF',
+                                noteText: _activeAnalysisText,
+                              ));
                             });
                           },
                         ),

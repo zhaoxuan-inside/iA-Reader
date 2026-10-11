@@ -1,1 +1,2 @@
 {"version": "1.0", "category": "task_active", "root": "_09_task"}
+{"id": "task_12_reader_interaction_fixes", "title": "阅读交互修复：胶囊跟随鼠标/窗口按下即拖/自绘窗口控制图标/高亮选区级持久化", "path": "_02_task_detail/_01_task_12_reader_interaction_fixes/_00_task_detail.md", "status": "READY", "digest": "49b7c6fd"}

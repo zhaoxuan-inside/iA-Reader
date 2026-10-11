@@ -153,37 +153,43 @@ class _LibraryScreenState extends State<LibraryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 极简顶部工作台控制条（应用内顶栏即唯一标题栏：支持拖拽 + 窗口控制）
-              GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanStart: (_) => WindowChannel.beginDrag(),
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 32.0, right: 16.0, top: 20.0, bottom: 24.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'AI Reader 书库',
-                            style: TextStyle(
-                              fontSize: 26.0,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.5,
-                              color: textPrimary,
+              // 极简顶部工作台控制条（应用内顶栏即唯一标题栏：标题区按下即拖 + 窗口控制）
+              // task_12 D2：onPointerDown 立即 beginDrag（onPanStart 斜率门槛导致拖动失效），
+              // 按钮区不在拖拽区内不受影响；双击标题区切换最大化
+              Padding(
+                padding: const EdgeInsets.only(left: 32.0, right: 16.0, top: 20.0, bottom: 24.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    GestureDetector(
+                      onDoubleTap: toggleWindowMaximize,
+                      child: Listener(
+                        behavior: HitTestBehavior.translucent,
+                        onPointerDown: (_) => WindowChannel.beginDrag(),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'AI Reader 书库',
+                              style: TextStyle(
+                                fontSize: 26.0,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.5,
+                                color: textPrimary,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 4.0),
-                          Text(
-                            '本地优先 · 离线认知 · 沉浸无噪',
-                            style: TextStyle(
-                              fontSize: 13.0,
-                              color: textSecondary,
+                            const SizedBox(height: 4.0),
+                            Text(
+                              '本地优先 · 离线认知 · 沉浸无噪',
+                              style: TextStyle(
+                                fontSize: 13.0,
+                                color: textSecondary,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
+                    ),
                       Row(
                         children: [
                           IconButton(
@@ -221,7 +227,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ),
                     ],
                   ),
-                ),
               ),
 
               // 搜索与过滤栏

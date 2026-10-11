@@ -183,6 +183,17 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             let list = service_guard.storage.get_annotations(book_id).map_err(|e| e.to_string())?;
             Ok(json!({ "annotations": list }))
         }
+        "annotation.delete" => {
+            let annotation_id = val
+                .get("annotation_id")
+                .and_then(|v| v.as_i64())
+                .ok_or("annotation.delete requires annotation_id")?;
+            service_guard
+                .storage
+                .delete_annotation(annotation_id)
+                .map_err(|e| e.to_string())?;
+            Ok(json!({ "status": "deleted", "annotation_id": annotation_id }))
+        }
         "ai.companion_ask" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let template_type = val.get("template_type").and_then(|v| v.as_str()).unwrap_or("general");

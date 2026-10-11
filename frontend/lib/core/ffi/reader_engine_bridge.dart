@@ -230,8 +230,13 @@ class ReaderEngineBridge {
         'id': annotId,
         'book_id': payload['book_id'] ?? 1,
         'section_id': payload['section_id'] ?? 1,
+        'paragraph_id': payload['paragraph_id'] ?? 'p1',
+        'style': payload['style'] ?? 'highlight',
         'note_text': note,
         'color': payload['color'] ?? '#007AFF',
+        'anchor': payload['anchor'] is Map<String, dynamic>
+            ? Map<String, dynamic>.from(payload['anchor'] as Map)
+            : {'paragraph_id': payload['paragraph_id'] ?? 'p1'},
         'created_at': DateTime.now().toIso8601String(),
       };
       _inMemoryAnnotations.add(item);
@@ -246,6 +251,15 @@ class ReaderEngineBridge {
         code: 0,
         message: 'success',
         data: {'annotations': List.from(_inMemoryAnnotations)},
+        metrics: {'duration_ms': 2, 'timestamp': now},
+      );
+    } else if (action == 'annotation.delete') {
+      final id = payload['annotation_id']?.toString();
+      _inMemoryAnnotations.removeWhere((a) => a['id']?.toString() == id);
+      return InvokeEnvelope(
+        code: 0,
+        message: 'Deleted',
+        data: {'status': 'deleted'},
         metrics: {'duration_ms': 2, 'timestamp': now},
       );
     } else if (action == 'mindmap.generate') {
