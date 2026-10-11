@@ -12,27 +12,31 @@ class AnnotationListEntry {
   const AnnotationListEntry({required this.item, required this.excerpt});
 }
 
-/// 标注管理弹窗内容（task_13 D5）：全书标注清单——样式名 + 色点 + 摘录 + 批注文本 + 删除。
+/// 标注管理弹窗内容（task_13 D5 + task_16 D2）：全书标注清单——
+/// 样式名 + 色点 + 摘录 + 批注文本 + 编辑/删除。
 /// 由 main.dart 以 FrostedModal 承载；点击正文标注区间或段落批注计数行打开。
 class AnnotationManagerModal extends StatelessWidget {
   final List<AnnotationListEntry> entries;
   final ValueChanged<String> onDelete;
+  final void Function(String annotationId, String currentNote) onEdit;
   final VoidCallback onClose;
 
   const AnnotationManagerModal({
     Key? key,
     required this.entries,
     required this.onDelete,
+    required this.onEdit,
     required this.onClose,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return buildContent(onDelete: onDelete, onClose: onClose);
+    return buildContent(onDelete: onDelete, onEdit: onEdit, onClose: onClose);
   }
 
   Widget buildContent({
     required ValueChanged<String> onDelete,
+    required void Function(String annotationId, String currentNote) onEdit,
     required VoidCallback onClose,
   }) {
     return Builder(builder: (context) {
@@ -103,6 +107,16 @@ class AnnotationManagerModal extends StatelessWidget {
                                       fontWeight: FontWeight.w500,
                                       color: color)),
                               const Spacer(),
+                              if (e.item.noteText != null && e.item.noteText!.isNotEmpty)
+                                Tooltip(
+                                  message: '编辑标注 ${e.item.id}',
+                                  child: GestureDetector(
+                                    onTap: () => onEdit(e.item.id, e.item.noteText!),
+                                    child: Icon(Icons.edit_outlined, size: 15.0, color: textSecondary),
+                                  ),
+                                ),
+                              if (e.item.noteText != null && e.item.noteText!.isNotEmpty)
+                                const SizedBox(width: 8.0),
                               Tooltip(
                                 message: '删除标注 ${e.item.id}',
                                 child: GestureDetector(

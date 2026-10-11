@@ -16,18 +16,20 @@ class TocSectionItem {
   });
 }
 
-/// 导图节点结构
+/// 导图节点结构（sectionId：后端节点与章节的关联，task_16 联动跳转）
 class MindmapNodeItem {
   final String id;
   final String label;
   final int depth;
   final String? parentId;
+  final int? sectionId;
 
   const MindmapNodeItem({
     required this.id,
     required this.label,
     required this.depth,
     this.parentId,
+    this.sectionId,
   });
 }
 
@@ -56,7 +58,7 @@ class TocMindmapDrawer extends StatefulWidget {
   final int activeSectionId;
   final Function(TocSectionItem section) onSectionSelected;
   final Function(String keyword) onKeywordSelected;
-  final ValueChanged<String>? onNodeSelected;
+  final void Function(String label, int? sectionId)? onNodeSelected;
   final VoidCallback? onClose;
 
   const TocMindmapDrawer({
@@ -208,7 +210,8 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                 padding: const EdgeInsets.all(8.0),
                 child: MindmapCanvas(
                   nodes: widget.mindmapNodes,
-                  onNodeSelected: (label) => widget.onNodeSelected?.call(label),
+                  onNodeSelected: (node) =>
+                      widget.onNodeSelected?.call(node.label, node.sectionId),
                 ),
               ),
 

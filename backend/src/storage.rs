@@ -460,6 +460,28 @@ impl SqliteStorage {
         Ok(())
     }
 
+    /// 部分更新标注（task_16 D1）：仅覆盖提供的字段，version 自增；软删行不可更新
+    pub fn update_annotation(
+        &self,
+        annotation_id: i64,
+        note_text: Option<&str>,
+        color: Option<&str>,
+        style: Option<&str>,
+    ) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let changed = conn.execute(
+            "UPDATE annotation SET \
+             note_text = COALESCE(?2, note_text), \
+             color = COALESCE(?3, color), \
+             style = COALESCE(?4, style), \
+             updated_at = CURRENT_TIMESTAMP, \
+             version = version + 1 \
+             WHERE id = ?1 AND is_del = 0",
+            params![annotation_id, note_text, color, style],
+        )?;
+        Ok(changed > 0)
+    }
+
     pub fn save_ai_conversation(&self, conv: &AiConversation) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         conn.execute(

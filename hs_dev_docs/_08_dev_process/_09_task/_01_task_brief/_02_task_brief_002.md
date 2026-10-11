@@ -48,3 +48,39 @@
 - **更新时间**：`2026-10-11T10:09:55Z`
 ---
 
+### 任务简述：task_16_annotation_edit_mindmap_jump
+- **标题**：清零遗留①：批注可编辑（annotation.update 全链）+ 导图节点联动章节跳转
+- **change_size**：`M`
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：清零遗留①：批注可编辑（annotation.update 全链）+ 导图节点联动章节跳转
+- **详情索引**：`_02_task_detail/_01_task_16_annotation_edit_mindmap_jump/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_16_annotation_edit_mindmap_jump/_00_context_pack.md`
+- **更新时间**：`2026-10-11T10:32:43Z`
+---
+
+### 任务简述：task_17_concurrent_stream
+- **标题**：清零遗留②：FFI 并发治理（LLM 不占全局锁）+ 流式伴读 companion_start/poll + 前端渐进渲染
+- **change_size**：`M`
+- **状态**：`READY`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：清零遗留②：FFI 并发治理（LLM 不占全局锁）+ 流式伴读 companion_start/poll + 前端渐进渲染
+- **详情索引**：`_02_task_detail/_01_task_17_concurrent_stream/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_17_concurrent_stream/_00_context_pack.md`
+- **更新时间**：`2026-10-11T10:18:23Z`
+---
+
+### 任务简述：task_18_deb_metadata
+- **标题**：清零遗留③：deb 打包元数据修正（Depends/Description 对齐 Flutter 桌面应用）
+- **change_size**：`M`
+- **状态**：`READY`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：清零遗留③：deb 打包元数据修正（Depends/Description 对齐 Flutter 桌面应用）
+- **详情索引**：`_02_task_detail/_01_task_18_deb_metadata/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_18_deb_metadata/_00_context_pack.md`
+- **更新时间**：`2026-10-11T10:18:23Z`
+---
+

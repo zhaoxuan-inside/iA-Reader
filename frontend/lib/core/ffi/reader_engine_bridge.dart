@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:isolate';
 import 'package:ffi/ffi.dart';
@@ -79,6 +80,13 @@ class ReaderEngineBridge {
 
   // 内存中模拟存储（用于离线开发或无动态库环境测试）
   final List<Map<String, dynamic>> _inMemoryAnnotations = [];
+
+  /// 清空进程内 mock 状态（@visibleForTesting）：桥接为单例工厂，
+  /// 内存标注跨同一进程内的用例共享，各 e2e harness pump 前调用以保证用例隔离。
+  @visibleForTesting
+  void resetMockStateForTest() {
+    _inMemoryAnnotations.clear();
+  }
 
   ReaderEngineBridge._({String? libraryPath}) : _libraryPath = libraryPath;
 
@@ -262,21 +270,41 @@ class ReaderEngineBridge {
         data: {'status': 'deleted'},
         metrics: {'duration_ms': 2, 'timestamp': now},
       );
+    } else if (action == 'annotation.update') {
+      final id = payload['annotation_id']?.toString();
+      var hit = 0;
+      for (var i = 0; i < _inMemoryAnnotations.length; i++) {
+        final a = _inMemoryAnnotations[i];
+        if (a['id']?.toString() != id) continue;
+        hit++;
+        _inMemoryAnnotations[i] = {
+          ...a,
+          if (payload['note_text'] != null) 'note_text': payload['note_text'],
+          if (payload['color'] != null) 'color': payload['color'],
+          if (payload['style'] != null) 'style': payload['style'],
+        };
+      }
+      return InvokeEnvelope(
+        code: 0,
+        message: 'Updated',
+        data: {'status': hit > 0 ? 'updated' : 'not_found'},
+        metrics: {'duration_ms': 2, 'timestamp': now},
+      );
     } else if (action == 'mindmap.generate') {
       return InvokeEnvelope(
         code: 0,
         message: 'success',
         data: {
           'nodes': [
-            {'id': 'm1', 'label': '分布式高可靠存储', 'depth': 0, 'parent_id': null},
-            {'id': 'm2', 'label': '预写式日志 (WAL)', 'depth': 1, 'parent_id': 'm1'},
-            {'id': 'm3', 'label': '顺序写入与原子性', 'depth': 2, 'parent_id': 'm2'},
-            {'id': 'm4', 'label': '崩溃恢复与Redo/Undo', 'depth': 2, 'parent_id': 'm2'},
-            {'id': 'm5', 'label': '快照隔离与并发控制', 'depth': 1, 'parent_id': 'm1'},
-            {'id': 'm6', 'label': '只读快照免锁并发', 'depth': 2, 'parent_id': 'm5'},
-            {'id': 'm7', 'label': '检查点协调与截断抖动', 'depth': 2, 'parent_id': 'm5'},
-            {'id': 'm8', 'label': '本地三级概念拓扑', 'depth': 1, 'parent_id': 'm1'},
-            {'id': 'm9', 'label': 'PMI 词共现矩阵', 'depth': 2, 'parent_id': 'm8'},
+            {'id': 'm1', 'label': '分布式高可靠存储', 'depth': 0, 'parent_id': null, 'section_id': null},
+            {'id': 'm2', 'label': '预写式日志 (WAL)', 'depth': 1, 'parent_id': 'm1', 'section_id': 1},
+            {'id': 'm3', 'label': '顺序写入与原子性', 'depth': 2, 'parent_id': 'm2', 'section_id': 1},
+            {'id': 'm4', 'label': '崩溃恢复与Redo/Undo', 'depth': 2, 'parent_id': 'm2', 'section_id': 1},
+            {'id': 'm5', 'label': '快照隔离与并发控制', 'depth': 1, 'parent_id': 'm1', 'section_id': 2},
+            {'id': 'm6', 'label': '只读快照免锁并发', 'depth': 2, 'parent_id': 'm5', 'section_id': 2},
+            {'id': 'm7', 'label': '检查点协调与截断抖动', 'depth': 2, 'parent_id': 'm5', 'section_id': 2},
+            {'id': 'm8', 'label': '本地三级概念拓扑', 'depth': 1, 'parent_id': 'm1', 'section_id': 3},
+            {'id': 'm9', 'label': 'PMI 词共现矩阵', 'depth': 2, 'parent_id': 'm8', 'section_id': 3},
           ]
         },
         metrics: {'duration_ms': 8, 'timestamp': now},

@@ -11,6 +11,8 @@ void main() {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
+    // 桥接为单例：清空跨用例共享的内存 mock 状态
+    ReaderEngineBridge().resetMockStateForTest();
     await tester.pumpWidget(const AIReaderApp());
     await tester.pumpAndSettle();
   }
@@ -88,11 +90,43 @@ void main() {
     expect(row['anchor'] ?? row['anchor_json'], isNotNull, reason: 'anchor 应被保存并回读');
     expect(row['style'], 'highlight');
 
-    // 删除也应可用（task_13 标注管理前置）
+    // 删除与更新也应可用（task_13/16 标注管理）
     final delRes = await bridge.invoke('annotation.delete', {'annotation_id': savedId});
     expect(delRes.isSuccess, isTrue);
     final list2 = await bridge.invoke('annotation.list', {'book_id': 1});
     final rows2 = (list2.data['annotations'] as List).cast<Map<String, dynamic>>();
     expect(rows2.any((r) => r['id'] == savedId), isFalse);
+  });
+
+  testWidgets('annotation.update 部分更新批注文本（mock 往返）', (tester) async {
+    final bridge = ReaderEngineBridge();
+    final saveRes = await bridge.invoke('annotation.save', {
+      'book_id': 1,
+      'paragraph_id': 'p1',
+      'style': 'margin_note',
+      'note_text': '旧批注',
+      'color': '#CA8A04',
+    });
+    final id = saveRes.data['annotation_id'];
+
+    final updRes = await bridge.invoke('annotation.update', {
+      'annotation_id': id,
+      'note_text': '新批注',
+    });
+    expect(updRes.isSuccess, isTrue);
+    expect(updRes.data['status'], 'updated');
+
+    final listRes = await bridge.invoke('annotation.list', {'book_id': 1});
+    final rows = (listRes.data['annotations'] as List).cast<Map<String, dynamic>>();
+    final row = rows.firstWhere((r) => r['id'] == id);
+    expect(row['note_text'], '新批注');
+    expect(row['color'], '#CA8A04', reason: '未提供的字段保持');
+
+    // 更新不存在的 id → not_found
+    final miss = await bridge.invoke('annotation.update', {
+      'annotation_id': 'no_such',
+      'note_text': 'x',
+    });
+    expect(miss.data['status'], 'not_found');
   });
 }

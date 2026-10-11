@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_reader_frontend/features/annotation/domain/annotation_item.dart';
 import 'package:ai_reader_frontend/features/annotation/presentation/annotation_manager.dart';
 import 'package:ai_reader_frontend/features/annotation/presentation/annotation_palette.dart';
+import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
 import 'package:ai_reader_frontend/main.dart';
 
 void main() {
@@ -12,6 +13,8 @@ void main() {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
+    // 桥接为单例：清空跨用例共享的内存 mock 状态
+    ReaderEngineBridge().resetMockStateForTest();
     await tester.pumpWidget(const AIReaderApp());
     await tester.pumpAndSettle();
   }
@@ -85,8 +88,10 @@ void main() {
     expect(find.textContaining('1 条批注'), findsOneWidget, reason: '段落下方应出现批注计数');
   });
 
-  testWidgets('标注管理器：列出/删除标注', (tester) async {
+  testWidgets('标注管理器：列出/编辑/删除标注', (tester) async {
     var deletedId = '';
+    String? editedId;
+    String? editedNote;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: AnnotationManagerModal(
@@ -106,6 +111,10 @@ void main() {
             ),
           ],
           onDelete: (id) => deletedId = id,
+          onEdit: (id, note) {
+            editedId = id;
+            editedNote = note;
+          },
           onClose: () {},
         ),
       ),
@@ -115,7 +124,51 @@ void main() {
     expect(find.text('批注内容'), findsOneWidget);
     expect(find.textContaining('波浪线'), findsOneWidget);
 
+    // 编辑入口携带 id 与当前批注原文（task_16）
+    await tester.tap(find.byTooltip('编辑标注 a1'));
+    expect(editedId, 'a1');
+    expect(editedNote, '批注内容');
+
     await tester.tap(find.byTooltip('删除标注 a1'));
     expect(deletedId, 'a1');
+  });
+
+  testWidgets('批注编辑全链：新建→打开管理器→编辑→保存→列表更新', (tester) async {
+    await pumpDesktopApp(tester);
+
+    // 1. 划词创建批注
+    final paragraphFinder = find.textContaining('现代分布式系统').first;
+    final paraRect = tester.getRect(paragraphFinder);
+    final gesture = await tester.startGesture(paraRect.center - const Offset(80, 0));
+    await tester.pump(const Duration(milliseconds: 700));
+    await gesture.moveBy(const Offset(160, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('标注'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('批注'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '旧批注文本');
+    await tester.tap(find.text('保存批注'), warnIfMissed: true);
+    await tester.pumpAndSettle();
+    // 2. 打开管理器 → 编辑（mock 注解 id 带时间戳，用谓词匹配 Tooltip）
+    await tester.tap(find.textContaining('1 条批注'));
+    await tester.pumpAndSettle();
+    final editTooltipFinder = find.byWidgetPredicate((w) =>
+        w is Tooltip && (w.message?.startsWith('编辑标注') ?? false));
+    await tester.tap(editTooltipFinder);
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsOneWidget, reason: '编辑器应打开且唯一');
+    // 编辑器预填原文（管理器底下的行也显示同文本，故断言输入框内容而非全局文本）
+    final editor = tester.widget<TextField>(find.byType(TextField));
+    expect(editor.controller?.text, '旧批注文本');
+
+    // 3. 修改并保存
+    await tester.enterText(find.byType(TextField), '新批注文本');
+    await tester.tap(find.text('保存批注'));
+    await tester.pumpAndSettle();
+    expect(find.text('新批注文本'), findsOneWidget, reason: '管理器应显示更新后的批注');
+    expect(find.text('旧批注文本'), findsNothing);
   });
 }

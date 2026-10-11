@@ -81,8 +81,8 @@ void main() {
       const KeywordTagItem(word: '日志', score: 0.4, count: 3),
     ];
 
-    testWidgets('导图画布渲染并可点选节点', (tester) async {
-      String? tapped;
+    testWidgets('导图画布渲染并可点选节点（回调整节点含 sectionId）', (tester) async {
+      MindmapNodeItem? tapped;
       await tester.pumpWidget(MaterialApp(
         home: Scaffold(
           body: SizedBox(
@@ -90,7 +90,7 @@ void main() {
             height: 500,
             child: MindmapCanvas(
               nodes: nodes,
-              onNodeSelected: (label) => tapped = label,
+              onNodeSelected: (node) => tapped = node,
             ),
           ),
         ),
@@ -103,7 +103,41 @@ void main() {
       final layout = layoutMindmapTree(nodes);
       final rootCenter = layout.positions['m1']! + const Offset(66, 17);
       await tester.tapAt(rootCenter);
-      expect(tapped, '分布式高可靠存储');
+      expect(tapped?.label, '分布式高可靠存储');
+      expect(tapped?.sectionId, isNull, reason: '根节点无章节关联');
+
+      // 带章节关联的子节点：回调携带 sectionId（task_16 联动跳转）
+      MindmapNodeItem? tappedChild;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 360,
+            height: 500,
+            child: MindmapCanvas(
+              nodes: [
+                _n('a', '根章节', 0),
+                _n('b', '子章节概念', 1, parent: 'a'),
+              ].map((n) => MindmapNodeItem(
+                    id: n.id,
+                    label: n.label,
+                    depth: n.depth,
+                    parentId: n.parentId,
+                    sectionId: n.id == 'b' ? 7 : null,
+                  )).toList(),
+              onNodeSelected: (node) => tappedChild = node,
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final layout2 = layoutMindmapTree([
+        _n('a', '根章节', 0),
+        _n('b', '子章节概念', 1, parent: 'a'),
+      ]);
+      final childCenter = layout2.positions['b']! + const Offset(66, 17);
+      await tester.tapAt(childCenter);
+      expect(tappedChild?.label, '子章节概念');
+      expect(tappedChild?.sectionId, 7);
     });
 
     testWidgets('抽屉三 Tab：目录/知识导图/词云，词云字号随权重', (tester) async {
@@ -121,7 +155,7 @@ void main() {
               activeSectionId: 1,
               onSectionSelected: (_) {},
               onKeywordSelected: (_) {},
-              onNodeSelected: (_) {},
+              onNodeSelected: (label, sectionId) {},
             ),
           ),
         ),

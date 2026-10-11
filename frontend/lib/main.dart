@@ -169,6 +169,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   // 独立 AI 键盘（task_14）：Cmd+K / 顶栏按钮唤起
   bool _isAiKeyboardOpen = false;
 
+  // 批注编辑态（task_16 D2）：非空 = 编辑既有批注而非新建
+  String? _editingAnnotationId;
+
   @override
   void initState() {
     super.initState();
@@ -258,6 +261,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
             label: n['label'] ?? '',
             depth: n['depth'] as int? ?? 0,
             parentId: n['parent_id']?.toString(),
+            sectionId: (n['section_id'] as num?)?.toInt(),
           );
         }).toList();
       });
@@ -374,8 +378,37 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   /// 高亮 = 默认琥珀色的直通快路径（胶囊「高亮」按钮，不经面板）
   Future<void> _handleHighlight() => _applyAnnotation(AnnotationStyle.highlight, _defaultHighlightHex);
 
-  /// 保存人工批注（task_13 D4）：margin_note 样式 + 选区区间 anchor + note_text
+  /// 保存人工批注（task_13 D4 / task_16 D2）：_editingAnnotationId 非空走更新，否则新建
   Future<void> _saveNote(String text) async {
+    final editingId = _editingAnnotationId;
+    if (editingId != null && editingId.isNotEmpty) {
+      await widget.bridge.invoke('annotation.update', {
+        'annotation_id': editingId,
+        'note_text': text,
+      });
+      if (!mounted) return;
+      setState(() {
+        final i = _annotations.indexWhere((a) => a.id == editingId);
+        if (i >= 0) {
+          final a = _annotations[i];
+          _annotations[i] = AnnotationItem(
+            id: a.id,
+            bookId: a.bookId,
+            sectionId: a.sectionId,
+            paragraphId: a.paragraphId,
+            startOffset: a.startOffset,
+            endOffset: a.endOffset,
+            style: a.style,
+            colorHex: a.colorHex,
+            noteText: text,
+          );
+        }
+        _isNoteEditorOpen = false;
+        _editingAnnotationId = null;
+      });
+      return;
+    }
+
     final pId = _selectedParagraphIdCache ?? _focusController.activeParagraphId ?? 'p1';
     final start = _selStartCache;
     final end = _selEndCache;
@@ -416,8 +449,41 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         noteText: text,
       ));
       _isNoteEditorOpen = false;
+      _editingAnnotationId = null;
       _clearSelection();
     });
+  }
+
+  /// 导图节点联动章节跳转（task_16 D3）：关目录 + 设活跃章节 + 动画滚动到该章节首段
+  void _jumpToSection(int sectionId) {
+    setState(() {
+      _activeSectionId = sectionId;
+      _isTocOpen = false;
+    });
+    final index = _paragraphs.indexWhere((p) => p['section_id'] == sectionId);
+    if (index < 0) return;
+    final firstParaId = _paragraphs[index]['id'] as String;
+
+    // 精确路径：目标段已构建（RenderBox 可用）则用全局坐标换算滚动位置
+    final ctx = _paraKeys[firstParaId]?.currentContext;
+    if (ctx != null) {
+      final ro = ctx.findRenderObject();
+      if (ro is RenderBox && ro.hasSize) {
+        final itemTop = ro.localToGlobal(Offset.zero).dy;
+        final target = (_scrollController.offset + itemTop - 96.0)
+            .clamp(0.0, _scrollController.position.maxScrollExtent);
+        _scrollController.animateTo(target,
+            duration: const Duration(milliseconds: 340),
+            curve: Curves.easeOutCubic);
+        return;
+      }
+    }
+    // 兜底路径：懒构建未命中的远端段落按索引比例估算
+    final estimated = (index / (_paragraphs.length + 1)) *
+        _scrollController.position.maxScrollExtent;
+    _scrollController.animateTo(estimated,
+        duration: const Duration(milliseconds: 340),
+        curve: Curves.easeOutCubic);
   }
 
   /// 删除标注（task_13 D5）
@@ -987,10 +1053,27 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     SnackBar(content: Text('已锚定核心概念：#$kw'), duration: const Duration(milliseconds: 1200)),
                                   );
                                 },
-                                onNodeSelected: (label) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('已定位知识节点：$label'), duration: const Duration(milliseconds: 1200)),
-                                  );
+                                onNodeSelected: (label, sectionId) {
+                                  if (sectionId != null) {
+                                    _jumpToSection(sectionId);
+                                    final sectionTitle = _tocSections
+                                        .where((s) => s.id == sectionId)
+                                        .map((s) => s.title)
+                                        .firstOrNull;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('已跳转章节：${sectionTitle ?? sectionId}'),
+                                        duration: const Duration(milliseconds: 1200),
+                                      ),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('已定位知识节点：$label'),
+                                        duration: const Duration(milliseconds: 1200),
+                                      ),
+                                    );
+                                  }
                                 },
                               ),
                             ),
@@ -1129,27 +1212,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           ),
                         ),
 
-                      // 人工批注编辑浮层（task_13 D4）
-                      if (_isNoteEditorOpen)
-                        Positioned.fill(
-                          child: FrostedModal(
-                            width: 380.0,
-                            maxHeight: 320.0,
-                            onDismiss: () => setState(() {
-                              _isNoteEditorOpen = false;
-                              _clearSelection();
-                            }),
-                            child: NoteEditorPopover(
-                              onSave: _saveNote,
-                              onCancel: () => setState(() {
-                                _isNoteEditorOpen = false;
-                                _clearSelection();
-                              }),
-                            ),
-                          ),
-                        ),
-
-                      // 标注管理弹窗（task_13 D5）
+                      // 标注管理弹窗（task_13 D5 / task_16 D2：编辑+删除）
                       if (_isAnnotationManagerOpen)
                         Positioned.fill(
                           child: FrostedModal(
@@ -1165,9 +1228,40 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                         AnnotationListEntry(item: a, excerpt: _excerptFor(a)))
                                     .toList(),
                                 onDelete: _deleteAnnotation,
+                                onEdit: (id, currentNote) => setState(() {
+                                  _editingAnnotationId = id;
+                                  _isNoteEditorOpen = true;
+                                }),
                                 onClose: () =>
                                     setState(() => _isAnnotationManagerOpen = false),
                               ),
+                            ),
+                          ),
+                        ),
+
+                      // 人工批注编辑浮层（task_13 D4 / task_16 D2：编辑态预填原文）
+                      if (_isNoteEditorOpen)
+                        Positioned.fill(
+                          child: FrostedModal(
+                            width: 380.0,
+                            maxHeight: 320.0,
+                            onDismiss: () => setState(() {
+                              _isNoteEditorOpen = false;
+                              _editingAnnotationId = null;
+                            }),
+                            child: NoteEditorPopover(
+                              initialText: _editingAnnotationId != null
+                                  ? (_annotations
+                                          .where((a) => a.id == _editingAnnotationId)
+                                          .firstOrNull
+                                          ?.noteText ??
+                                      '')
+                                  : '',
+                              onSave: _saveNote,
+                              onCancel: () => setState(() {
+                                _isNoteEditorOpen = false;
+                                _editingAnnotationId = null;
+                              }),
                             ),
                           ),
                         ),

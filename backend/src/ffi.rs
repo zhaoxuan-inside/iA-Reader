@@ -194,6 +194,20 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
                 .map_err(|e| e.to_string())?;
             Ok(json!({ "status": "deleted", "annotation_id": annotation_id }))
         }
+        "annotation.update" => {
+            let annotation_id = val
+                .get("annotation_id")
+                .and_then(|v| v.as_i64())
+                .ok_or("annotation.update requires annotation_id")?;
+            let note_text = val.get("note_text").and_then(|v| v.as_str());
+            let color = val.get("color").and_then(|v| v.as_str());
+            let style = val.get("style").and_then(|v| v.as_str());
+            let changed = service_guard
+                .storage
+                .update_annotation(annotation_id, note_text, color, style)
+                .map_err(|e| e.to_string())?;
+            Ok(json!({ "status": if changed { "updated" } else { "not_found" }, "annotation_id": annotation_id }))
+        }
         "ai.companion_ask" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let template_type = val.get("template_type").and_then(|v| v.as_str()).unwrap_or("general");

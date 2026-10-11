@@ -90,10 +90,10 @@ MindmapLayoutResult layoutMindmapTree(
 }
 
 /// 图形化知识导图画布（task_15 D1）：贝塞尔连线 + 圆角节点，
-/// InteractiveViewer 缩放平移；点击节点回调（子坐标系命中）。
+/// InteractiveViewer 缩放平移；点击节点回调整节点对象（task_16：携带 sectionId 联动）。
 class MindmapCanvas extends StatelessWidget {
   final List<MindmapNodeItem> nodes;
-  final ValueChanged<String> onNodeSelected;
+  final ValueChanged<MindmapNodeItem> onNodeSelected;
 
   const MindmapCanvas({
     Key? key,
@@ -120,7 +120,7 @@ class MindmapCanvas extends StatelessWidget {
             final rect = Rect.fromLTWH(
                 pos.dx, pos.dy, kMindmapNodeWidth, kMindmapNodeHeight);
             if (rect.contains(p)) {
-              onNodeSelected(node.label);
+              onNodeSelected(node);
               return;
             }
           }

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ai_reader_frontend/core/widgets/frosted_modal.dart';
 import 'package:ai_reader_frontend/features/selection_pill/presentation/floating_action_pill.dart';
+import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
 import 'package:ai_reader_frontend/main.dart';
 
 /// 毛玻璃弹窗与划词胶囊交互回归测试（task_11 UI 交互改造）
@@ -11,6 +12,8 @@ void main() {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
+    // 桥接为单例：清空跨用例共享的内存 mock 状态
+    ReaderEngineBridge().resetMockStateForTest();
     await tester.pumpWidget(const AIReaderApp());
     await tester.pumpAndSettle();
   }

@@ -603,3 +603,76 @@ mod llm_companion_tests {
         std::fs::remove_file(&db).ok();
     }
 }
+
+#[cfg(test)]
+mod annotation_update_tests {
+    use super::*;
+
+    fn temp_db(tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "ai_reader_annot_test_{}_{}.db",
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        path.to_string_lossy().to_string()
+    }
+
+    fn sample_annot(book_id: i64) -> Annotation {
+        Annotation {
+            id: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+            description: None,
+            is_del: 0,
+            version: 1,
+            book_id,
+            section_id: None,
+            color: "#CA8A04".to_string(),
+            style: "margin_note".to_string(),
+            note_text: Some("旧批注".to_string()),
+            anchor_json: "{}".to_string(),
+            ai_response: None,
+        }
+    }
+
+    #[test]
+    fn annotation_update_roundtrip_and_soft_delete_guard() {
+        let service = ReaderService::new(SqliteStorage::init_db(&temp_db("upd")).unwrap());
+        let book_id = service
+            .storage
+            .save_book(&BookMeta {
+                id: 0,
+                created_at: String::new(),
+                updated_at: String::new(),
+                description: None,
+                is_del: 0,
+                version: 1,
+                title: "标注更新书".to_string(),
+                author: None,
+                file_path: "/tmp/t.md".to_string(),
+                file_hash: "test_hash_upd".to_string(),
+                format: "md".to_string(),
+                total_pages: 0,
+                read_progress: 0.0,
+                last_read_at: None,
+            })
+            .unwrap();
+
+        let id = service.storage.save_annotation(&sample_annot(book_id)).unwrap();
+
+        // 部分更新：只改 note_text，color/style 保持
+        assert!(service.storage.update_annotation(id, Some("新批注内容"), None, None).unwrap());
+        let got = service.storage.get_annotations(book_id).unwrap();
+        let a = got.iter().find(|a| a.id == id).unwrap();
+        assert_eq!(a.note_text.as_deref(), Some("新批注内容"));
+        assert_eq!(a.color, "#CA8A04");
+        assert_eq!(a.style, "margin_note");
+
+        // 软删后不可再更新
+        service.storage.delete_annotation(id).unwrap();
+        assert!(!service.storage.update_annotation(id, Some("不应生效"), None, None).unwrap());
+    }
+}
