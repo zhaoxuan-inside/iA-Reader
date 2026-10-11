@@ -1,5 +1,7 @@
 #include "my_application.h"
 
+#include <string.h>
+
 #include <flutter_linux/flutter_linux.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
@@ -14,6 +16,70 @@ struct _MyApplication {
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 
+// 应用内顶栏为唯一标题栏（窗口去装饰）。Flutter 侧经 MethodChannel "ai.reader/window"
+// 驱动最小化/最大化/关闭与拖拽；Wayland 的 begin_move_drag 需要仍处于按住状态的
+// 按键 serial，故在此记录最近一次落在视图上的左键按下事件供 beginDrag 取用。
+static struct {
+  guint button;
+  gdouble root_x;
+  gdouble root_y;
+  guint32 time;
+} last_view_press = {0, 0.0, 0.0, 0};
+
+static gboolean on_view_button_press(GtkWidget* view, GdkEventButton* event,
+                                     gpointer user_data) {
+  if (event->type == GDK_BUTTON_PRESS && event->button == 1) {
+    last_view_press.button = event->button;
+    last_view_press.root_x = event->x_root;
+    last_view_press.root_y = event->y_root;
+    last_view_press.time = event->time;
+  }
+  return FALSE;  // 继续传给 Flutter 自身的处理
+}
+
+static FlMethodChannel* window_channel = NULL;
+
+static void window_method_call_handler(FlMethodChannel* channel,
+                                       FlMethodCall* call, gpointer user_data) {
+  GtkWindow* window = GTK_WINDOW(user_data);
+  const gchar* name = fl_method_call_get_name(call);
+  g_autoptr(FlMethodResponse) response = NULL;
+
+  if (strcmp(name, "minimize") == 0) {
+    gtk_window_iconify(window);
+    response = FL_METHOD_RESPONSE(
+        fl_method_success_response_new(fl_value_new_bool(TRUE)));
+  } else if (strcmp(name, "toggleMaximize") == 0) {
+    if (gtk_window_is_maximized(window)) {
+      gtk_window_unmaximize(window);
+    } else {
+      gtk_window_maximize(window);
+    }
+    response = FL_METHOD_RESPONSE(
+        fl_method_success_response_new(fl_value_new_bool(gtk_window_is_maximized(window))));
+  } else if (strcmp(name, "close") == 0) {
+    gtk_window_close(window);
+    response = FL_METHOD_RESPONSE(
+        fl_method_success_response_new(fl_value_new_bool(TRUE)));
+  } else if (strcmp(name, "beginDrag") == 0) {
+    if (last_view_press.button != 0) {
+      gtk_window_begin_move_drag(window, (gint)last_view_press.button,
+                                 (gint)last_view_press.root_x,
+                                 (gint)last_view_press.root_y,
+                                 (guint32)last_view_press.time);
+    }
+    response = FL_METHOD_RESPONSE(
+        fl_method_success_response_new(fl_value_new_bool(TRUE)));
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+
+  g_autoptr(GError) error = NULL;
+  if (!fl_method_call_respond(call, response, &error)) {
+    g_warning("Failed to respond window method call: %s", error->message);
+  }
+}
+
 // Called when first Flutter frame received.
 static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
@@ -25,36 +91,17 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-  // Use a header bar when running in GNOME as this is the common style used
-  // by applications and is the setup most users will be using (e.g. Ubuntu
-  // desktop).
-  // If running on X and not using GNOME then just use a traditional title bar
-  // in case the window manager does more exotic layout, e.g. tiling.
-  // If running on Wayland assume the header bar will work (may need changing
-  // if future cases occur).
-  gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
-  GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
-    const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
-    if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
-      use_header_bar = FALSE;
-    }
-  }
-#endif
-  if (use_header_bar) {
-    GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-    gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "ai_reader_frontend");
-    gtk_header_bar_set_show_close_button(header_bar, TRUE);
-    gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
-  } else {
-    gtk_window_set_title(window, "ai_reader_frontend");
-  }
-
+  // 应用内 Flutter 顶栏即唯一标题栏：去掉 GTK 装饰，避免双标题栏；
+  // 窗口最小化/最大化/关闭与拖拽由应用内顶栏经 MethodChannel 驱动。
+  gtk_window_set_title(window, "AI Reader");
   gtk_window_set_default_size(window, 1280, 720);
+  gtk_window_set_decorated(window, FALSE);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  // Impeller (OpenGLES) 在本机驱动栈上存在主题切换后字形/图层沿用旧颜色的渲染缺陷：
+  // 暗色启动后切亮色，正文与标题仍以暗色主题颜色绘制（浅字浅底不可见），
+  // 连续重建与整树重建均无法恢复（引擎全局缓存）。固定走 Skia 后端规避。
+  fl_dart_project_set_enable_impeller(project, FALSE);
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 
@@ -71,7 +118,18 @@ static void my_application_activate(GApplication* application) {
   // Requires the view to be realized so we can start rendering.
   g_signal_connect_swapped(view, "first-frame", G_CALLBACK(first_frame_cb),
                            self);
+  g_signal_connect(view, "button-press-event", G_CALLBACK(on_view_button_press),
+                   NULL);
   gtk_widget_realize(GTK_WIDGET(view));
+
+  // 窗口控制通道：最小化/最大化/关闭/拖拽（见文件头注释）
+  g_autoptr(FlStandardMethodCodec) window_codec = fl_standard_method_codec_new();
+  window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "ai.reader/window", FL_METHOD_CODEC(window_codec));
+  fl_method_channel_set_method_call_handler(window_channel,
+                                            window_method_call_handler, window,
+                                            NULL);
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 

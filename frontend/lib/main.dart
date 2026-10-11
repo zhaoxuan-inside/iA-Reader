@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'core/theme/reader_theme.dart';
 import 'core/ffi/reader_engine_bridge.dart';
+import 'core/widgets/frosted_modal.dart';
+import 'core/widgets/window_controls.dart';
+import 'core/window/window_channel.dart';
 import 'features/reader/presentation/controllers/focus_mode_controller.dart';
 import 'features/selection_pill/presentation/floating_action_pill.dart';
 import 'features/companion/presentation/companion_drawer.dart';
@@ -126,6 +130,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   List<MindmapNodeItem> _mindmapNodes = [];
   List<KeywordTagItem> _keywords = [];
   List<Map<String, dynamic>> _paragraphs = [];
+  // 段落锚点：划词胶囊定位到选区所在段落/选区矩形旁
+  final Map<String, GlobalKey> _paraKeys = {};
   final Set<String> _highlightedParagraphIds = {};
   final Map<String, List<String>> _paragraphAnnotations = {};
 
@@ -319,6 +325,50 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     }
   }
 
+  /// 划词胶囊定位：优先锚定选区末尾矩形（RenderParagraph 实测选区框），
+  /// 回退到选区段落右上角；并夹紧到窗口可视范围内。
+  Offset _computePillPosition(String pId, TextSelection selection) {
+    const pillWidth = 240.0;
+    const pillHeight = 38.0;
+    const margin = 16.0;
+    final screen = MediaQuery.of(context).size;
+    Offset anchor = const Offset(260.0, 180.0);
+
+    final ro = _paraKeys[pId]?.currentContext?.findRenderObject();
+    if (ro is RenderBox && ro.hasSize) {
+      final paraOrigin = ro.localToGlobal(Offset.zero);
+      anchor = Offset(
+        paraOrigin.dx + ro.size.width - pillWidth,
+        paraOrigin.dy - pillHeight - 8.0,
+      );
+      final paragraph = _findRenderParagraph(ro);
+      if (paragraph != null) {
+        try {
+          final boxes = paragraph.getBoxesForSelection(selection);
+          if (boxes.isNotEmpty) {
+            final globalEnd = paragraph.localToGlobal(boxes.last.toRect().bottomRight);
+            anchor = Offset(globalEnd.dx - pillWidth * 0.6, globalEnd.dy + 10.0);
+          }
+        } catch (_) {
+          // 选区盒计算失败时沿用段落右上角锚点
+        }
+      }
+    }
+
+    final dx = anchor.dx.clamp(margin, (screen.width - pillWidth - margin).clamp(margin, double.infinity));
+    final dy = anchor.dy.clamp(56.0, screen.height - pillHeight - margin);
+    return Offset(dx, dy);
+  }
+
+  RenderParagraph? _findRenderParagraph(RenderObject root) {
+    if (root is RenderParagraph) return root;
+    RenderParagraph? found;
+    root.visitChildren((child) {
+      found ??= _findRenderParagraph(child);
+    });
+    return found;
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -392,7 +442,12 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                 backgroundColor: canvasBg,
                 body: MouseRegion(
                   onHover: (e) {
-                    if (e.position.dy < 48 && !_isHeaderVisible) {
+                    // 仅当指针明确向上移动接近顶缘时才唤出顶栏：
+                    // 纯位置接近（dy<48）会与「下滚隐退」互相触发——阅读时指针停在顶栏附近，
+                    // 每次滚轮下滚隐退后，指针微动又唤出，顶栏与正文反复跳变形成持续抖动。
+                    if (!_isHeaderVisible &&
+                        e.position.dy < 48 &&
+                        e.delta.dy < -1.0) {
                       setState(() => _isHeaderVisible = true);
                     }
                   },
@@ -408,7 +463,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                             child: AnimatedOpacity(
                               duration: ReaderTheme.chromeFadeDuration,
                               opacity: _isHeaderVisible ? 1.0 : 0.0,
-                              child: Container(
+                              // 应用内顶栏即唯一标题栏：空白区域拖拽移动窗口（buttons 各自响应点击）
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onPanStart: (_) => WindowChannel.beginDrag(),
+                                child: Container(
                                 height: 44.0,
                                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                                 decoration: BoxDecoration(
@@ -491,10 +550,13 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             _focusController.setCompanionDrawerOpen(!_focusController.isCompanionDrawerOpen);
                                           },
                                         ),
+                                        const SizedBox(width: 4.0),
+                                        WindowControls(color: textSecondary),
                                       ],
                                     ),
                                   ],
                                 ),
+                              ),
                               ),
                             ),
                           ),
@@ -503,24 +565,6 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           Expanded(
                             child: Row(
                               children: [
-                                // 左侧目录与导图 (纯文章罗盘，阅毕即隐)
-                                if (isDesktop && _isTocOpen)
-                                  TocMindmapDrawer(
-                                    sections: _tocSections,
-                                    mindmapNodes: _mindmapNodes,
-                                    keywords: _keywords,
-                                    activeSectionId: _activeSectionId,
-                                    onClose: () => setState(() => _isTocOpen = false),
-                                    onSectionSelected: (sec) {
-                                      setState(() => _activeSectionId = sec.id);
-                                    },
-                                    onKeywordSelected: (kw) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('已锚定核心概念：#$kw'), duration: const Duration(milliseconds: 1200)),
-                                      );
-                                    },
-                                  ),
-
                                 // 中央沉浸黄金阅读区 (700px 定宽，iA Writer 极致排版)
                                 Expanded(
                                   child: Center(
@@ -567,6 +611,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                           final p = _paragraphs[index - 1];
                                           final pId = p['id'] as String;
                                           final text = p['text'] as String;
+                                          final paraKey = _paraKeys.putIfAbsent(
+                                              pId, () => GlobalKey(debugLabel: 'para_$pId'));
                                           final opacity = _focusController.getParagraphOpacity(pId);
                                           final isHighlighted = _highlightedParagraphIds.contains(pId);
                                           final notes = _paragraphAnnotations[pId];
@@ -575,6 +621,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             duration: ReaderTheme.focusTransitionDuration,
                                             opacity: opacity,
                                             child: Container(
+                                              key: paraKey,
                                               margin: const EdgeInsets.only(bottom: ReaderTheme.paragraphSpacing),
                                               padding: isHighlighted
                                                   ? const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0)
@@ -598,9 +645,13 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                           setState(() {
                                                             _selectedTextCache = selectedStr;
                                                             _selectedParagraphIdCache = pId;
-                                                            _selectionPosition = const Offset(260.0, 180.0);
+                                                            _selectionPosition =
+                                                                _computePillPosition(pId, selection);
                                                           });
                                                         }
+                                                      } else if (_selectionPosition != null) {
+                                                        // 在本文内点击收起选区时同步收起胶囊
+                                                        setState(() => _selectionPosition = null);
                                                       }
                                                     },
                                                   ),
@@ -627,68 +678,121 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     ),
                                   ),
                                 ),
-
-                                // 右侧认知伴读抽屉 (桌面端 380px)
-                                if (isDesktop && _focusController.isCompanionDrawerOpen)
-                                  CompanionDrawer(
-                                    selectedText: _focusController.selectedText ?? _selectedTextCache ?? '',
-                                    currentTemplate: _activeTemplate,
-                                    initialAnalysis: _activeAnalysisText,
-                                    offlineMode: _companionOffline,
-                                    onOpenSettings: () => LlmSettingsDialog.show(context, widget.bridge),
-                                    onClose: () {
-                                      _focusController.setCompanionDrawerOpen(false);
-                                      _focusController.exitFocusMode();
-                                    },
-                                    onSaveAnnotation: (note) async {
-                                      final targetPid = _focusController.activeParagraphId ?? 'p1';
-                                      await widget.bridge.invoke('annotation.save', {
-                                        'book_id': _currentBookId,
-                                        'section_id': _activeSectionId,
-                                        'paragraph_id': targetPid,
-                                        'note_text': note,
-                                        'color': '#007AFF',
-                                      });
-                                      setState(() {
-                                        _paragraphAnnotations.putIfAbsent(targetPid, () => []).add(note);
-                                      });
-                                    },
-                                    onAskFollowUp: (q) async {
-                                      final res = await widget.bridge.invoke('ai.companion_ask', {
-                                        'book_id': _currentBookId,
-                                        'template_type': _activeTemplate.templateKey,
-                                        'selected_text': _focusController.selectedText ?? '',
-                                        'prompt': q,
-                                      });
-                                      final answer =
-                                          (res.data['analysis'] ?? res.data['response'] ?? '追问分析完成') as String;
-                                      if (mounted) {
-                                        setState(() => _companionOffline = answer.startsWith('【离线模式】'));
-                                      }
-                                      return answer;
-                                    },
-                                  ),
                               ],
                             ),
                           ),
                         ],
                       ),
 
-                      // 划词快速伴读悬浮胶囊 (DESIGN.md §4.2: 5 按钮)
+                      // 毛玻璃弹窗层：文章导航（目录/导图/词云）
+                      if (isDesktop && _isTocOpen)
+                        Positioned.fill(
+                          child: FrostedModal(
+                            width: 360.0,
+                            maxHeight: 620.0,
+                            onDismiss: () => setState(() => _isTocOpen = false),
+                            child: SizedBox(
+                              height: 620.0,
+                              child: TocMindmapDrawer(
+                                sections: _tocSections,
+                                mindmapNodes: _mindmapNodes,
+                                keywords: _keywords,
+                                activeSectionId: _activeSectionId,
+                                onClose: () => setState(() => _isTocOpen = false),
+                                onSectionSelected: (sec) {
+                                  setState(() => _activeSectionId = sec.id);
+                                },
+                                onKeywordSelected: (kw) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('已锚定核心概念：#$kw'), duration: const Duration(milliseconds: 1200)),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // 毛玻璃弹窗层：AI 认知伴读
+                      if (isDesktop && _focusController.isCompanionDrawerOpen)
+                        Positioned.fill(
+                          child: FrostedModal(
+                            width: 440.0,
+                            maxHeight: 600.0,
+                            onDismiss: () {
+                              _focusController.setCompanionDrawerOpen(false);
+                              _focusController.exitFocusMode();
+                            },
+                            child: SizedBox(
+                              height: 560.0,
+                              child: CompanionDrawer(
+                                selectedText: _focusController.selectedText ?? _selectedTextCache ?? '',
+                                currentTemplate: _activeTemplate,
+                                initialAnalysis: _activeAnalysisText,
+                                offlineMode: _companionOffline,
+                                onOpenSettings: () => LlmSettingsDialog.show(context, widget.bridge),
+                                onClose: () {
+                                  _focusController.setCompanionDrawerOpen(false);
+                                  _focusController.exitFocusMode();
+                                },
+                                onSaveAnnotation: (note) async {
+                                  final targetPid = _focusController.activeParagraphId ?? 'p1';
+                                  await widget.bridge.invoke('annotation.save', {
+                                    'book_id': _currentBookId,
+                                    'section_id': _activeSectionId,
+                                    'paragraph_id': targetPid,
+                                    'note_text': note,
+                                    'color': '#007AFF',
+                                  });
+                                  setState(() {
+                                    _paragraphAnnotations.putIfAbsent(targetPid, () => []).add(note);
+                                  });
+                                },
+                                onAskFollowUp: (q) async {
+                                  final res = await widget.bridge.invoke('ai.companion_ask', {
+                                    'book_id': _currentBookId,
+                                    'template_type': _activeTemplate.templateKey,
+                                    'selected_text': _focusController.selectedText ?? '',
+                                    'prompt': q,
+                                  });
+                                  final answer =
+                                      (res.data['analysis'] ?? res.data['response'] ?? '追问分析完成') as String;
+                                  if (mounted) {
+                                    setState(() => _companionOffline = answer.startsWith('【离线模式】'));
+                                  }
+                                  return answer;
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+
+                      // 划词快速伴读悬浮胶囊 (DESIGN.md §4.2: 5 按钮；锚定选区，点外部即收)
+                      if (_selectionPosition != null)
                       if (_selectionPosition != null)
                         Positioned(
                           top: _selectionPosition!.dy,
                           left: _selectionPosition!.dx,
-                          child: FloatingActionPill(
-                            onTemplateSelected: (tpl) {
-                              if (tpl == CognitiveTemplateType.highlight) {
-                                _handleHighlight();
-                              } else {
-                                final text = _selectedTextCache ?? '';
-                                final pId = _selectedParagraphIdCache ?? 'p1';
-                                _triggerCompanion(pId, text, tpl);
+                          child: TapRegion(
+                            onTapOutside: (_) {
+                              if (_selectionPosition != null) {
+                                setState(() {
+                                  _selectionPosition = null;
+                                  _selectedTextCache = null;
+                                  _selectedParagraphIdCache = null;
+                                });
                               }
                             },
+                            child: FloatingActionPill(
+                              onTemplateSelected: (tpl) {
+                                if (tpl == CognitiveTemplateType.highlight) {
+                                  _handleHighlight();
+                                } else {
+                                  final text = _selectedTextCache ?? '';
+                                  final pId = _selectedParagraphIdCache ?? 'p1';
+                                  _triggerCompanion(pId, text, tpl);
+                                }
+                              },
+                            ),
                           ),
                         ),
 

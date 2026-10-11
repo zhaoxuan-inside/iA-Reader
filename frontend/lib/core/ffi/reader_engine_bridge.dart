@@ -118,10 +118,13 @@ class ReaderEngineBridge {
     final candidatePaths = <String>[];
     if (Platform.isLinux) {
       candidatePaths.addAll([
-        'libreader_core.so',
-        'backend/target/release/libreader_core.so',
-        '/usr/lib/ai-reader/lib/libreader_core.so',
+        // dlopen 不搜索 CWD：裸名 'libreader_core.so' 不可靠（existsSync 通过也可能
+        // 打开到 ldconfig 缓存里的另一份库），统一用带 ./ 的相对路径或绝对路径
         './libreader_core.so',
+        // 开发态：CWD 可能为仓库根（flutter run 由根脚本启动）或 frontend/
+        'backend/target/release/libreader_core.so',
+        '../backend/target/release/libreader_core.so',
+        '/usr/lib/ai-reader/lib/libreader_core.so',
       ]);
     } else if (Platform.isMacOS) {
       candidatePaths.addAll([

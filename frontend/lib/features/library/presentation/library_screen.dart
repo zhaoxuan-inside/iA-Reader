@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/reader_theme.dart';
 import '../../../core/ffi/reader_engine_bridge.dart';
+import '../../../core/widgets/window_controls.dart';
+import '../../../core/window/window_channel.dart';
 import '../../settings/presentation/settings_dialog.dart';
 
 /// 极简书目模型
@@ -151,68 +153,74 @@ class _LibraryScreenState extends State<LibraryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 极简顶部工作台控制条
-              Padding(
-                padding: const EdgeInsets.only(left: 32.0, right: 32.0, top: 48.0, bottom: 24.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'AI Reader 书库',
-                          style: TextStyle(
-                            fontSize: 26.0,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: -0.5,
-                            color: textPrimary,
+              // 极简顶部工作台控制条（应用内顶栏即唯一标题栏：支持拖拽 + 窗口控制）
+              GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onPanStart: (_) => WindowChannel.beginDrag(),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 32.0, right: 16.0, top: 20.0, bottom: 24.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'AI Reader 书库',
+                            style: TextStyle(
+                              fontSize: 26.0,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: -0.5,
+                              color: textPrimary,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4.0),
-                        Text(
-                          '本地优先 · 离线认知 · 沉浸无噪',
-                          style: TextStyle(
-                            fontSize: 13.0,
-                            color: textSecondary,
+                          const SizedBox(height: 4.0),
+                          Text(
+                            '本地优先 · 离线认知 · 沉浸无噪',
+                            style: TextStyle(
+                              fontSize: 13.0,
+                              color: textSecondary,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        IconButton(
-                          tooltip: '伴读 LLM 设置',
-                          icon: Icon(
-                            Icons.settings_outlined,
-                            size: 20.0,
-                            color: textSecondary,
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: '伴读 LLM 设置',
+                            icon: Icon(
+                              Icons.settings_outlined,
+                              size: 20.0,
+                              color: textSecondary,
+                            ),
+                            onPressed: () => LlmSettingsDialog.show(context, widget.bridge),
                           ),
-                          onPressed: () => LlmSettingsDialog.show(context, widget.bridge),
-                        ),
-                        const SizedBox(width: 8.0),
-                        IconButton(
-                          tooltip: '切换日夜模式',
-                          icon: Icon(
-                            isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-                            size: 20.0,
-                            color: textSecondary,
+                          const SizedBox(width: 8.0),
+                          IconButton(
+                            tooltip: '切换日夜模式',
+                            icon: Icon(
+                              isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                              size: 20.0,
+                              color: textSecondary,
+                            ),
+                            onPressed: widget.onToggleTheme,
                           ),
-                          onPressed: widget.onToggleTheme,
-                        ),
-                        const SizedBox(width: 8.0),
-                        TextButton.icon(
-                          onPressed: _showImportFileDialog,
-                          style: TextButton.styleFrom(
-                            foregroundColor: accentColor,
-                            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
+                          const SizedBox(width: 8.0),
+                          TextButton.icon(
+                            onPressed: _showImportFileDialog,
+                            style: TextButton.styleFrom(
+                              foregroundColor: accentColor,
+                              padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
+                            ),
+                            icon: const Icon(Icons.add, size: 18.0),
+                            label: const Text('导入文档', style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w500)),
                           ),
-                          icon: const Icon(Icons.add, size: 18.0),
-                          label: const Text('导入文档', style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w500)),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 6.0),
+                          WindowControls(color: textSecondary),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
 

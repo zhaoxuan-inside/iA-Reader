@@ -90,9 +90,44 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let meta = service_guard.storage.get_book(book_id).map_err(|e| e.to_string())?;
             let sections = service_guard.storage.get_sections(book_id).map_err(|e| e.to_string())?;
+
+            // FFI 契约（前端 _loadDocumentData / bridge mock）：sections[].paragraphs[]。
+            // 引擎此前只回 section 行，正文从未进入前端——阅读区恒空白。
+            // 段落优先取 sentence_node 切片；缺失时按空行切分 content 兜底（跳过 markdown 标题行）。
+            let mut section_payloads = Vec::with_capacity(sections.len());
+            for section in &sections {
+                let sentences = service_guard
+                    .storage
+                    .get_sentences(section.id)
+                    .unwrap_or_default();
+                let paragraphs: Vec<Value> = if sentences.is_empty() {
+                    split_content_paragraphs(section.id, section.content.as_deref().unwrap_or(""))
+                } else {
+                    sentences
+                        .iter()
+                        .map(|s| {
+                            json!({
+                                "id": format!("p{}", s.id),
+                                "section_id": s.section_id,
+                                "text": s.text,
+                            })
+                        })
+                        .collect()
+                };
+                let mut sec_value =
+                    serde_json::to_value(section).map_err(|e| e.to_string())?;
+                if let Some(obj) = sec_value.as_object_mut() {
+                    obj.insert("paragraphs".to_string(), Value::Array(paragraphs));
+                }
+                section_payloads.push(sec_value);
+            }
+
+            let title = meta.as_ref().map(|m| m.title.clone()).unwrap_or_default();
             Ok(json!({
+                "book_id": book_id,
+                "title": title,
                 "meta": meta,
-                "sections": sections
+                "sections": section_payloads
             }))
         }
         "nlp.extract_keywords" => {
@@ -195,4 +230,22 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         }
         _ => Err(format!("Unknown action: {}", action)),
     }
+}
+
+/// 将章节 markdown content 按空行切分为正文段落，跳过纯标题块。
+/// 仅作为 sentence_node 切片缺失时的兜底，保证阅读区正文不因历史数据缺句而空白。
+fn split_content_paragraphs(section_id: i64, content: &str) -> Vec<Value> {
+    let mut paragraphs = Vec::new();
+    for (idx, block) in content.split("\n\n").enumerate() {
+        let text = block.trim().to_string();
+        if text.is_empty() || text.lines().all(|l| l.trim_start().starts_with('#')) {
+            continue;
+        }
+        paragraphs.push(json!({
+            "id": format!("p{}_{}", section_id, idx + 1),
+            "section_id": section_id,
+            "text": text,
+        }));
+    }
+    paragraphs
 }

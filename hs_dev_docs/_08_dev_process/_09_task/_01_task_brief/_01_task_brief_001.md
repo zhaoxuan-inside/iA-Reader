@@ -99,3 +99,23 @@
 - **更新时间**：`2026-10-11T06:18:55Z`
 ---
 
+
+### 任务简述：task_10_theme_render_bugfix
+- **标题**：修复顶栏悬停抖动 / 白天模式文字不可见（Impeller 陈旧上色 + doc.get 契约不匹配）
+- **状态**：`COMPLETED`
+- **优先级**：P0
+- **负责人**：agent
+- **核心目标**：顶栏唤出加方向门控消除抖动循环；禁用 Impeller 走 Skia 规避主题切换陈旧上色；引擎 doc.get 组装 paragraphs/title 补齐 FFI 契约使正文渲染
+- **详情索引**：`_02_task_detail/_01_task_10_theme_render_bugfix/_00_task_detail.md`
+- **更新时间**：`2026-10-11T08:00:00Z`
+---
+
+### 任务简述：task_11_frosted_modal_ui
+- **标题**：UI 交互改造——胶囊锚定选区/点外即收、单标题栏、AI 伴读与目录导图毛玻璃弹窗化
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：划词胶囊锚定选区矩形并可点外消失；窗口去系统装饰由应用内顶栏托管窗口控制与拖拽；FrostedModal（背景高斯模糊+不透明面板+羽化边界）承载 AI 伴读与目录导图
+- **详情索引**：`_02_task_detail/_01_task_11_frosted_modal_ui/_00_task_detail.md`
+- **更新时间**：`2026-10-11T09:00:00Z`
+---
