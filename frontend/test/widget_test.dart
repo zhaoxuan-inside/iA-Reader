@@ -105,6 +105,8 @@ void main() {
 
       // 对话框渲染 + 默认配置回填（mock 通道内建缺省）
       expect(find.text('伴读 LLM 设置'), findsOneWidget);
+      expect(find.byKey(const Key('settings_storage_section')), findsOneWidget, reason: '存储位置区块应渲染');
+      expect(find.textContaining('~/.ai-reader'), findsWidgets, reason: '集中存储路径应展示');
       final endpointField = find.byKey(const Key('settings_endpoint'));
       expect(endpointField, findsOneWidget);
       final endpointWidget = tester.widget<TextField>(endpointField);

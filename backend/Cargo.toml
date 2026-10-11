@@ -17,3 +17,4 @@ chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1.0"
 regex = "1.10"
 ureq = { version = "2.10", default-features = false, features = ["json", "tls", "gzip"] }
+sha2 = "0.10"

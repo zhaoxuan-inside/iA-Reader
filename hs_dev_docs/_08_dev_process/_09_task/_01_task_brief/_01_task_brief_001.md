@@ -77,3 +77,14 @@
 - **更新时间**：`2026-10-11T05:12:25Z`
 ---
 
+### 任务简述：task_08_centralized_data_home
+- **标题**：运行期产物集中到 ~/.ai-reader（data/config/logs/books）+ 可配置位置 + 旧位置自动迁移
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：运行期产物集中到 ~/.ai-reader（data/config/logs/books）+ 可配置位置 + 旧位置自动迁移
+- **详情索引**：`_02_task_detail/_01_task_08_centralized_data_home/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_08_centralized_data_home/_00_context_pack.md`
+- **更新时间**：`2026-10-11T05:46:37Z`
+---
+

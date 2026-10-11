@@ -48,6 +48,22 @@ impl ReaderService {
             Err(_) => self.doc_parse_fallback(file_path)?,
         };
 
+        // 导入文档稳定副本（ADR_005）：源文件移动/删除不再破坏书库；失败降级沿用原路径
+        let source_path = doc.meta.file_path.clone();
+        match crate::paths::copy_into_books(
+            &crate::paths::runtime().books_dir,
+            std::path::Path::new(&source_path),
+            &ext,
+        ) {
+            Ok(copy) => {
+                doc.meta.file_path = copy.to_string_lossy().to_string();
+                crate::log_info!("[PATHS] book copy stored: {}", doc.meta.file_path);
+            }
+            Err(e) => {
+                crate::log_warn!("[PATHS] books 副本失败，沿用原路径 {}: {}", source_path, e);
+            }
+        }
+
         let book_id = self.storage.save_book(&doc.meta).map_err(|e| {
             self.doc_parse_compensate(file_path);
             format!("Failed to save book meta: {}", e)
@@ -72,20 +88,20 @@ impl ReaderService {
     }
 
     pub fn doc_parse_compensate(&self, file_path: &str) {
-        eprintln!("[COMPENSATE] Rolling back document parsing for: {}", file_path);
+        crate::log_warn!("[COMPENSATE] Rolling back document parsing for: {}", file_path);
     }
 
     pub fn doc_parse_fallback(&self, file_path: &str) -> Result<ParsedDocument, String> {
-        eprintln!("[FALLBACK] Using plain text stream fallback for: {}", file_path);
+        crate::log_warn!("[FALLBACK] Using plain text stream fallback for: {}", file_path);
         parse_txt(file_path)
     }
 
     pub fn doc_parse_metrics(&self, duration_ms: f64, sentence_count: usize) {
-        println!("[METRICS] doc_parse completed in {:.2}ms (sentences: {})", duration_ms, sentence_count);
+        crate::log_info!("[METRICS] doc_parse completed in {:.2}ms (sentences: {})", duration_ms, sentence_count);
     }
 
     pub fn doc_parse_recall(&self, book_id: i64) {
-        println!("[RECALL] doc_parse success event triggered for book_id: {}", book_id);
+        crate::log_info!("[RECALL] doc_parse success event triggered for book_id: {}", book_id);
     }
 
     // =========================================================================
@@ -143,11 +159,11 @@ impl ReaderService {
     }
 
     pub fn nlp_keyword_extract_compensate(&self, book_id: i64) {
-        eprintln!("[COMPENSATE] Cleaning up extracted keywords for book_id: {}", book_id);
+        crate::log_warn!("[COMPENSATE] Cleaning up extracted keywords for book_id: {}", book_id);
     }
 
     pub fn nlp_keyword_extract_fallback(&self, book_id: i64, top_n: usize) -> Result<Vec<KeywordNode>, String> {
-        eprintln!("[FALLBACK] Using simple word frequency fallback for book_id: {}", book_id);
+        crate::log_warn!("[FALLBACK] Using simple word frequency fallback for book_id: {}", book_id);
         let fallback_words = vec!["深度阅读", "认知伴读", "注意力", "知识图谱", "思维导图"];
         let mut res = Vec::new();
         for (i, w) in fallback_words.iter().take(top_n).enumerate() {
@@ -170,11 +186,11 @@ impl ReaderService {
     }
 
     pub fn nlp_keyword_extract_metrics(&self, duration_ms: f64, count: usize) {
-        println!("[METRICS] nlp_keyword_extract completed in {:.2}ms (count: {})", duration_ms, count);
+        crate::log_info!("[METRICS] nlp_keyword_extract completed in {:.2}ms (count: {})", duration_ms, count);
     }
 
     pub fn nlp_keyword_extract_recall(&self, book_id: i64) {
-        println!("[RECALL] nlp_keyword_extract success for book_id: {}", book_id);
+        crate::log_info!("[RECALL] nlp_keyword_extract success for book_id: {}", book_id);
     }
 
     // =========================================================================
@@ -207,11 +223,11 @@ impl ReaderService {
     }
 
     pub fn keyword_graph_build_compensate(&self, book_id: i64) {
-        eprintln!("[COMPENSATE] Resetting keyword relations for book_id: {}", book_id);
+        crate::log_warn!("[COMPENSATE] Resetting keyword relations for book_id: {}", book_id);
     }
 
     pub fn keyword_graph_build_fallback(&self, book_id: i64, _min: i32) -> Result<Vec<KeywordRelation>, String> {
-        eprintln!("[FALLBACK] Using simple default relations for book_id: {}", book_id);
+        crate::log_warn!("[FALLBACK] Using simple default relations for book_id: {}", book_id);
         Ok(vec![
             KeywordRelation {
                 id: 1,
@@ -231,11 +247,11 @@ impl ReaderService {
     }
 
     pub fn keyword_graph_build_metrics(&self, duration_ms: f64, edge_count: usize) {
-        println!("[METRICS] keyword_graph_build completed in {:.2}ms (edges: {})", duration_ms, edge_count);
+        crate::log_info!("[METRICS] keyword_graph_build completed in {:.2}ms (edges: {})", duration_ms, edge_count);
     }
 
     pub fn keyword_graph_build_recall(&self, book_id: i64) {
-        println!("[RECALL] keyword_graph_build ready for book_id: {}", book_id);
+        crate::log_info!("[RECALL] keyword_graph_build ready for book_id: {}", book_id);
     }
 
     // =========================================================================
@@ -291,11 +307,11 @@ impl ReaderService {
     }
 
     pub fn mindmap_generate_compensate(&self, book_id: i64) {
-        eprintln!("[COMPENSATE] Resetting mindmap cache for book_id: {}", book_id);
+        crate::log_warn!("[COMPENSATE] Resetting mindmap cache for book_id: {}", book_id);
     }
 
     pub fn mindmap_generate_fallback(&self, book_id: i64) -> Result<Vec<MindmapNode>, String> {
-        eprintln!("[FALLBACK] Flat mindmap fallback for book_id: {}", book_id);
+        crate::log_warn!("[FALLBACK] Flat mindmap fallback for book_id: {}", book_id);
         Ok(vec![
             MindmapNode {
                 id: 1,
@@ -316,11 +332,11 @@ impl ReaderService {
     }
 
     pub fn mindmap_generate_metrics(&self, duration_ms: f64, node_count: usize) {
-        println!("[METRICS] mindmap_generate completed in {:.2}ms (nodes: {})", duration_ms, node_count);
+        crate::log_info!("[METRICS] mindmap_generate completed in {:.2}ms (nodes: {})", duration_ms, node_count);
     }
 
     pub fn mindmap_generate_recall(&self, book_id: i64) {
-        println!("[RECALL] mindmap ready for book_id: {}", book_id);
+        crate::log_info!("[RECALL] mindmap ready for book_id: {}", book_id);
     }
 
     // =========================================================================
@@ -339,20 +355,20 @@ impl ReaderService {
     }
 
     pub fn annotation_manage_compensate(&self, book_id: i64) {
-        eprintln!("[COMPENSATE] Rolling back annotation save for book_id: {}", book_id);
+        crate::log_warn!("[COMPENSATE] Rolling back annotation save for book_id: {}", book_id);
     }
 
     pub fn annotation_manage_fallback(&self, annotation: &Annotation) -> Result<i64, String> {
-        eprintln!("[FALLBACK] Annotation memory queue fallback for book_id: {}", annotation.book_id);
+        crate::log_warn!("[FALLBACK] Annotation memory queue fallback for book_id: {}", annotation.book_id);
         Ok(1)
     }
 
     pub fn annotation_manage_metrics(&self, duration_ms: f64, count: usize) {
-        println!("[METRICS] annotation_manage in {:.2}ms (count: {})", duration_ms, count);
+        crate::log_info!("[METRICS] annotation_manage in {:.2}ms (count: {})", duration_ms, count);
     }
 
     pub fn annotation_manage_recall(&self, annotation_id: i64) {
-        println!("[RECALL] annotation updated for annotation_id: {}", annotation_id);
+        crate::log_info!("[RECALL] annotation updated for annotation_id: {}", annotation_id);
     }
 
     // =========================================================================
@@ -379,7 +395,7 @@ impl ReaderService {
 
         // api_key 未配置：不发 HTTP、零计费，直接离线启发式卡片（PRD §4.1 离线可用性）
         let (response, offline) = if config.api_key.trim().is_empty() {
-            eprintln!("[FALLBACK] api_key 未配置，走离线启发式卡片（配置路径: ~/.config/ai-reader/llm_config.json）");
+            crate::log_warn!("[FALLBACK] api_key 未配置，走离线启发式卡片（配置路径: ~/.config/ai-reader/llm_config.json）");
             (self.ai_companion_stream_fallback(template_type, selected_text)?, true)
         } else {
             match chat_with_retry(
@@ -392,7 +408,7 @@ impl ReaderService {
             ) {
                 Ok(content) => (content, false),
                 Err(err) => {
-                    eprintln!("[FALLBACK] LLM 调用重试 {} 次后耗尽: {}，走离线启发式卡片", MAX_RETRIES, err);
+                    crate::log_warn!("[FALLBACK] LLM 调用重试 {} 次后耗尽: {}，走离线启发式卡片", MAX_RETRIES, err);
                     (self.ai_companion_stream_fallback(template_type, selected_text)?, true)
                 }
             }
@@ -414,7 +430,7 @@ impl ReaderService {
         };
         if let Err(e) = self.storage.save_ai_conversation(&conv) {
             // 持久化失败不吞异常也不阻断响应：返回仍成功，仅留运维日志（会话是伴读的附属沉淀）
-            eprintln!("[ERROR] AI 会话持久化失败: {}", e);
+            crate::log_error!("[ERROR] AI 会话持久化失败: {}", e);
         }
 
         self.ai_companion_stream_metrics(conv.latency_ms, 1);
@@ -424,13 +440,13 @@ impl ReaderService {
     }
 
     pub fn ai_companion_stream_compensate(&self, book_id: i64) {
-        eprintln!("[COMPENSATE] Cleaned up interrupted AI session for book_id: {}", book_id);
+        crate::log_warn!("[COMPENSATE] Cleaned up interrupted AI session for book_id: {}", book_id);
     }
 
     /// 离线确定性启发卡片（PRD §4.1）：未配置 api_key 或 LLM 重试耗尽时的降级路径，
     /// 按模板给出确定性思考支架，全部带离线标识，不产生任何网络调用。
     pub fn ai_companion_stream_fallback(&self, template_type: &str, selected_text: &str) -> Result<String, String> {
-        eprintln!("[FALLBACK] Offline heuristic template fallback for type: {}", template_type);
+        crate::log_warn!("[FALLBACK] Offline heuristic template fallback for type: {}", template_type);
         let heuristic = match template_type {
             "general" => format!("【通俗解读】\n关于「{}」：可尝试将其比作熟悉的生活场景或模块化积木，先抓住主旨，再拆解支撑主旨的关键要点。", selected_text),
             "logic" => format!("【逻辑链剖析】\n1. 论点前提：作者在段落「{}」中确立了哪些前置假设？\n2. 推导过程：论据到结论之间是否存在跳跃？\n3. 核心结论：论证结构是否闭合、有无未覆盖的反例。", selected_text),
@@ -445,11 +461,11 @@ impl ReaderService {
     }
 
     pub fn ai_companion_stream_metrics(&self, latency_ms: f64, turns: usize) {
-        println!("[METRICS] ai_companion_stream latency: {:.2}ms (turns: {})", latency_ms, turns);
+        crate::log_info!("[METRICS] ai_companion_stream latency: {:.2}ms (turns: {})", latency_ms, turns);
     }
 
     pub fn ai_companion_stream_recall(&self, book_id: i64) {
-        println!("[RECALL] ai companion session completed for book_id: {}", book_id);
+        crate::log_info!("[RECALL] ai companion session completed for book_id: {}", book_id);
     }
 }
 

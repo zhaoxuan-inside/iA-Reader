@@ -23,9 +23,51 @@ from typing import Dict, List, Any, Optional, Tuple
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
 
-USER_CONFIG_DIR = Path.home() / ".config" / "ai-reader"
+
+# @PublicAPI
+def get_app_base_dir() -> Path:
+    """运行期产物集中 base 目录（ADR_005）：env AI_READER_HOME > ~/.ai-reader。"""
+    env = os.environ.get("AI_READER_HOME", "").strip()
+    if env:
+        return Path(env)
+    return Path.home() / ".ai-reader"
+
+
+APP_BASE_DIR = get_app_base_dir()
+USER_CONFIG_DIR = APP_BASE_DIR / "config"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "llm_config.json"
 DEFAULT_CONFIG_FILE = WORKSPACE_ROOT / "config" / "default_llm_config.json"
+LEGACY_CONFIG_FILE = Path.home() / ".config" / "ai-reader" / "llm_config.json"
+
+
+def _migrate_legacy_file(src: Path, dst: Path) -> bool:
+    """幂等迁移：源存在且目标不存在时复制（只复制不删除）。"""
+    try:
+        if src.is_file() and not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            print(f"[PATHS] migrated {src} -> {dst}")
+            return True
+    except OSError as e:
+        print(f"[PATHS] migrate failed {src} -> {dst}: {e}")
+    return False
+
+
+def _migrate_legacy_db(db_path: Path) -> None:
+    if db_path.exists():
+        return
+    for old in (
+        Path.home() / "ai_reader_data.db",
+        Path.home() / ".local/share/ai-reader/ai_reader_data.db",
+        Path("ai_reader_data.db"),
+    ):
+        if _migrate_legacy_file(old, db_path):
+            return
+
+
+# 启动即迁移旧 LLM 配置（新位置缺失时从 ~/.config/ai-reader 复制）
+if not USER_CONFIG_FILE.exists():
+    _migrate_legacy_file(LEGACY_CONFIG_FILE, USER_CONFIG_FILE)
 
 # @PublicAPI
 def get_llm_config() -> Dict[str, Any]:
@@ -58,9 +100,10 @@ class StorageManager:
     # @PublicAPI
     def __init__(self, db_path: Optional[str] = None):
         if not db_path:
-            db_dir = Path.home() / ".local/share/ai-reader"
+            db_dir = APP_BASE_DIR / "data"
             db_dir.mkdir(parents=True, exist_ok=True)
-            db_path = str(db_dir / "ai_reader_data.db")
+            db_path = str(db_dir / "ai_reader.db")
+            _migrate_legacy_db(Path(db_path))
         self.db_path = db_path
         self.init_db(db_path)
 
@@ -903,6 +946,19 @@ class ReaderEngineService:
             parsed = self.doc_parse_fallback(file_path)
 
         meta = parsed["meta"]
+
+        # 导入文档稳定副本（ADR_005）：源文件移动/删除不再破坏书库；失败降级沿用原路径
+        try:
+            books_dir = APP_BASE_DIR / "books"
+            books_dir.mkdir(parents=True, exist_ok=True)
+            data = Path(file_path).read_bytes()
+            import hashlib
+            copy_path = books_dir / f"{hashlib.sha256(data).hexdigest()}.{ext}"
+            copy_path.write_bytes(data)
+            meta["file_path"] = str(copy_path)
+        except OSError as e:
+            print(f"[PATHS] books copy failed, keep original path: {e}")
+
         book_id = self.storage.save_book(meta)
         meta["id"] = book_id
 
@@ -1221,19 +1277,21 @@ def get_engine() -> ReaderEngineService:
     global _GLOBAL_ENGINE
     if _GLOBAL_ENGINE is None:
         db_dir = Path.home() / ".local/share/ai-reader"
+        db_dir = APP_BASE_DIR / "data"
         db_dir.mkdir(parents=True, exist_ok=True)
-        db_path = os.environ.get("AI_READER_DB_PATH", str(db_dir / "ai_reader_data.db"))
+        db_path = os.environ.get("AI_READER_DB_PATH", str(db_dir / "ai_reader.db"))
         storage = StorageManager(db_path)
         _GLOBAL_ENGINE = ReaderEngineService(storage)
         if not storage.list_books():
-            # 初始化样例书籍
+            # 初始化样例书籍（临时源文件写入 books 分区，解析后留有 sha256 副本）
             sample_file = WORKSPACE_ROOT / "mock/_02_mock_data/_01_dataset/sample_article_dataset.json"
             if sample_file.exists():
                 try:
                     data = json.loads(sample_file.read_text(encoding="utf-8"))
                     samples = data.get("samples", [])
                     if samples:
-                        temp_md = db_dir / "welcome_guide.md"
+                        temp_md = APP_BASE_DIR / "books" / "welcome_guide.md"
+                        temp_md.parent.mkdir(parents=True, exist_ok=True)
                         md_lines = []
                         for s in samples:
                             md_lines.append(f"# {s.get('title')}\n\n{s.get('text')}\n")

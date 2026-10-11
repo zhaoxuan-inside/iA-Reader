@@ -211,11 +211,9 @@ impl LlmClient for UreqLlmClient {
 // 设置页配置能力 (task_07)：路径 / 校验 / 保存 / 合并 / 连接测试
 // =========================================================================
 
-/// 用户级配置文件路径（与 Python CLI 引擎共享同一份）。
+/// 用户级配置文件路径（与 Python CLI 引擎共享同一份；ADR_005 集中存储）。
 pub fn user_config_path() -> std::path::PathBuf {
-    std::env::var("HOME")
-        .map(|h| Path::new(&h).join(".config").join("ai-reader").join("llm_config.json"))
-        .unwrap_or_else(|_| PathBuf::from("llm_config.json"))
+    crate::paths::llm_config_path(&crate::paths::base_dir())
 }
 
 /// 配置合法性校验：endpoint 协议、temperature 与 max_output_tokens 范围。

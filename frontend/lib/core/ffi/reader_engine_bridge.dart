@@ -377,7 +377,15 @@ class ReaderEngineBridge {
             'max_output_tokens': 2048,
             'system_prompt': '你是一个专业的全学科智能阅读伴读与学术解析助手。',
           },
-          'config_path': '~/.config/ai-reader/llm_config.json',
+          'config_path': '~/.ai-reader/config/llm_config.json',
+          'paths': {
+            'base': '~/.ai-reader',
+            'data': '~/.ai-reader/data',
+            'logs': '~/.ai-reader/logs',
+            'books': '~/.ai-reader/books',
+            'config': '~/.ai-reader/config/llm_config.json',
+            'db': '~/.ai-reader/data/ai_reader.db',
+          },
         },
         metrics: {'duration_ms': 1, 'timestamp': now},
       );
@@ -388,7 +396,7 @@ class ReaderEngineBridge {
         data: {
           'saved': true,
           'config': payload['config'] ?? {},
-          'config_path': '~/.config/ai-reader/llm_config.json',
+          'config_path': '~/.ai-reader/config/llm_config.json',
         },
         metrics: {'duration_ms': 2, 'timestamp': now},
       );

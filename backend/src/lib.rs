@@ -2,6 +2,8 @@
 // AI Reader Core Crate Root
 
 pub mod domain;
+pub mod paths;
+pub mod log;
 pub mod storage;
 pub mod parser;
 pub mod nlp;

@@ -14,7 +14,10 @@ static SERVICE: OnceLock<Mutex<ReaderService>> = OnceLock::new();
 // @PublicAPI
 fn get_service() -> &'static Mutex<ReaderService> {
     SERVICE.get_or_init(|| {
-        let storage = SqliteStorage::init_db("ai_reader_data.db").expect("Failed to initialize SQLite storage");
+        // ADR_005：集中存储初始化（目录/迁移/文件日志），db 落在 <base>/data/ai_reader.db
+        let rt = crate::paths::runtime();
+        let storage = SqliteStorage::init_db(&rt.db_path.to_string_lossy())
+            .expect("Failed to initialize SQLite storage");
         Mutex::new(ReaderService::new(storage))
     })
 }
@@ -158,9 +161,18 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         }
         "config.get" => {
             let cfg = crate::llm::LlmConfig::load();
+            let rt = crate::paths::runtime();
             Ok(json!({
                 "config": cfg,
                 "config_path": crate::llm::user_config_path().to_string_lossy(),
+                "paths": {
+                    "base": rt.base.to_string_lossy(),
+                    "data": rt.data_dir.to_string_lossy(),
+                    "logs": rt.log_dir.to_string_lossy(),
+                    "books": rt.books_dir.to_string_lossy(),
+                    "config": rt.llm_config_path.to_string_lossy(),
+                    "db": rt.db_path.to_string_lossy(),
+                },
             }))
         }
         "config.save" => {
