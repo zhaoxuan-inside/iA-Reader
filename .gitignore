@@ -9,3 +9,6 @@ __pycache__/
 build/
 target/
 .dart_tool/
+
+# 打包产物\(output/)
+output/

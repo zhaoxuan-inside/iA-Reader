@@ -8,6 +8,7 @@ import 'features/companion/presentation/companion_drawer.dart';
 import 'features/mobile_sheet/presentation/mobile_companion_sheet.dart';
 import 'features/toc_mindmap/presentation/toc_mindmap_drawer.dart';
 import 'features/library/presentation/library_screen.dart';
+import 'features/settings/presentation/settings_dialog.dart';
 
 void main() {
   runApp(const AIReaderApp());
@@ -132,6 +133,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   bool _isTocOpen = false;
   String _activeAnalysisText = '';
   CognitiveTemplateType _activeTemplate = CognitiveTemplateType.general;
+  // 最近一次伴读响应是否为离线降级卡片（驱动抽屉内"立即配置"提示）
+  bool _companionOffline = false;
   Offset? _selectionPosition;
   String? _selectedTextCache;
   String? _selectedParagraphIdCache;
@@ -275,7 +278,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
     if (mounted) {
       setState(() {
-        _activeAnalysisText = res.data['analysis'] ?? res.data['response'] ?? '解析完成';
+        final respText = (res.data['response'] ?? res.data['analysis'] ?? '解析完成') as String;
+        _activeAnalysisText = respText;
+        _companionOffline = respText.startsWith('【离线模式】');
       });
     }
   }
@@ -629,6 +634,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     selectedText: _focusController.selectedText ?? _selectedTextCache ?? '',
                                     currentTemplate: _activeTemplate,
                                     initialAnalysis: _activeAnalysisText,
+                                    offlineMode: _companionOffline,
+                                    onOpenSettings: () => LlmSettingsDialog.show(context, widget.bridge),
                                     onClose: () {
                                       _focusController.setCompanionDrawerOpen(false);
                                       _focusController.exitFocusMode();
@@ -653,7 +660,12 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                         'selected_text': _focusController.selectedText ?? '',
                                         'prompt': q,
                                       });
-                                      return res.data['analysis'] ?? res.data['response'] ?? '追问分析完成';
+                                      final answer =
+                                          (res.data['analysis'] ?? res.data['response'] ?? '追问分析完成') as String;
+                                      if (mounted) {
+                                        setState(() => _companionOffline = answer.startsWith('【离线模式】'));
+                                      }
+                                      return answer;
                                     },
                                   ),
                               ],

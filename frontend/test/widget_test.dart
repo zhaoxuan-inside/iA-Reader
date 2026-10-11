@@ -6,6 +6,7 @@ import 'package:ai_reader_frontend/features/selection_pill/presentation/floating
 import 'package:ai_reader_frontend/features/reader/presentation/controllers/focus_mode_controller.dart';
 import 'package:ai_reader_frontend/features/library/presentation/library_screen.dart';
 import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
+import 'package:ai_reader_frontend/features/settings/presentation/settings_dialog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -79,6 +80,67 @@ void main() {
       expect(resList.isSuccess, true);
       final notes = resList.data['annotations'] as List;
       expect(notes.isNotEmpty, true);
+    });
+  });
+
+  group('LLM Settings Dialog Tests', () {
+    testWidgets('Settings dialog loads config, saves and confirms', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => Center(
+                child: ElevatedButton(
+                  onPressed: () => LlmSettingsDialog.show(ctx, ReaderEngineBridge()),
+                  child: const Text('open-settings'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open-settings'));
+      await tester.pumpAndSettle();
+
+      // 对话框渲染 + 默认配置回填（mock 通道内建缺省）
+      expect(find.text('伴读 LLM 设置'), findsOneWidget);
+      final endpointField = find.byKey(const Key('settings_endpoint'));
+      expect(endpointField, findsOneWidget);
+      final endpointWidget = tester.widget<TextField>(endpointField);
+      expect(endpointWidget.controller!.text, contains('api.deepseek.com'));
+
+      // 修改 api_key 后保存
+      await tester.enterText(find.byKey(const Key('settings_api_key')), 'sk-widget-test');
+      await tester.tap(find.byKey(const Key('settings_save_button')));
+      await tester.pumpAndSettle();
+
+      // 对话框关闭并弹出成功提示
+      expect(find.text('伴读 LLM 设置'), findsNothing);
+      expect(find.textContaining('已保存'), findsOneWidget);
+    });
+
+    testWidgets('Settings dialog test-connection button reports via mock channel', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) => Center(
+                child: ElevatedButton(
+                  onPressed: () => LlmSettingsDialog.show(ctx, ReaderEngineBridge()),
+                  child: const Text('open-settings'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open-settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_test_button')));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('连接成功'), findsOneWidget);
     });
   });
 

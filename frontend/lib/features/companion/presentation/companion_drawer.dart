@@ -20,6 +20,12 @@ class CompanionDrawer extends StatefulWidget {
   final Future<void> Function(String noteContent) onSaveAnnotation;
   final Future<String> Function(String followUpQuestion) onAskFollowUp;
 
+  /// 最近一次伴读响应是否为离线降级卡片（响应前缀【离线模式】）
+  final bool offlineMode;
+
+  /// 打开伴读 LLM 设置对话框
+  final VoidCallback? onOpenSettings;
+
   const CompanionDrawer({
     Key? key,
     required this.selectedText,
@@ -28,6 +34,8 @@ class CompanionDrawer extends StatefulWidget {
     required this.onClose,
     required this.onSaveAnnotation,
     required this.onAskFollowUp,
+    this.offlineMode = false,
+    this.onOpenSettings,
   }) : super(key: key);
 
   @override
@@ -159,6 +167,43 @@ class _CompanionDrawerState extends State<CompanionDrawer> {
               ],
             ),
           ),
+
+          // 离线降级提示：直达 LLM 设置
+          if (widget.offlineMode && widget.onOpenSettings != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0.0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                decoration: BoxDecoration(
+                  color: (isDark ? const Color(0xFF27272A) : const Color(0xFFF3F4F6)),
+                  borderRadius: BorderRadius.circular(8.0),
+                  border: Border.all(color: borderColor, width: 1.0),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.bolt_outlined, size: 15.0, color: isDark ? Colors.white60 : Colors.black54),
+                    const SizedBox(width: 6.0),
+                    Expanded(
+                      child: Text(
+                        '当前为离线启发伴读（未配置 API Key）',
+                        style: TextStyle(fontSize: 11.5, color: isDark ? Colors.white70 : Colors.black54),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: widget.onOpenSettings,
+                      child: Text(
+                        '立即配置 →',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           // 对话流式卡片区
           Expanded(

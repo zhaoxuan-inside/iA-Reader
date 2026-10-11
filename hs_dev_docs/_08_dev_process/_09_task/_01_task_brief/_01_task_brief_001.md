@@ -66,3 +66,14 @@
 - **更新时间**：`2026-10-11T01:04:24Z`
 ---
 
+### 任务简述：task_07_llm_settings_ui
+- **标题**：LLM伴读设置页：config读写/连接测试FFI + iA极简设置对话框 + 离线提示入口
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：LLM伴读设置页：config读写/连接测试FFI + iA极简设置对话框 + 离线提示入口
+- **详情索引**：`_02_task_detail/_01_task_07_llm_settings_ui/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_07_llm_settings_ui/_00_context_pack.md`
+- **更新时间**：`2026-10-11T05:12:25Z`
+---
+

@@ -363,6 +363,42 @@ class ReaderEngineBridge {
         },
         metrics: {'duration_ms': 2, 'timestamp': now},
       );
+    } else if (action == 'config.get') {
+      return InvokeEnvelope(
+        code: 0,
+        message: 'success',
+        data: {
+          'config': {
+            'provider': 'deepseek',
+            'endpoint': 'https://api.deepseek.com/v1',
+            'api_key': '',
+            'model_name': 'deepseek-chat',
+            'temperature': 0.7,
+            'max_output_tokens': 2048,
+            'system_prompt': '你是一个专业的全学科智能阅读伴读与学术解析助手。',
+          },
+          'config_path': '~/.config/ai-reader/llm_config.json',
+        },
+        metrics: {'duration_ms': 1, 'timestamp': now},
+      );
+    } else if (action == 'config.save') {
+      return InvokeEnvelope(
+        code: 0,
+        message: 'Saved',
+        data: {
+          'saved': true,
+          'config': payload['config'] ?? {},
+          'config_path': '~/.config/ai-reader/llm_config.json',
+        },
+        metrics: {'duration_ms': 2, 'timestamp': now},
+      );
+    } else if (action == 'config.test') {
+      return InvokeEnvelope(
+        code: 0,
+        message: 'success',
+        data: {'ok': true, 'latency_ms': 12},
+        metrics: {'duration_ms': 12, 'timestamp': now},
+      );
     }
 
     return InvokeEnvelope(

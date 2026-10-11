@@ -7,9 +7,9 @@
 // - `chat_with_retry`       : 指数退避重试编排（sleep 可注入，测试零真实等待）
 // - `build_companion_messages`: 4 大认知模板 prompt 组装
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// 重试次数上限（含首次调用），对齐 PRD §4.1「指数退避重试（最多 3 次）」
@@ -35,7 +35,7 @@ fn default_max_tokens() -> u32 {
 
 /// LLM 配置，字段与 `backend/reader_engine.py::get_llm_config` 及
 /// `~/.config/ai-reader/llm_config.json` 完全同构，两端共享同一份用户配置。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     #[serde(default = "default_provider")]
     pub provider: String,
@@ -205,6 +205,66 @@ impl LlmClient for UreqLlmClient {
             .map(|s| s.to_string())
             .ok_or_else(|| format!("LLM response missing choices[0].message.content: {}", value))
     }
+}
+
+// =========================================================================
+// 设置页配置能力 (task_07)：路径 / 校验 / 保存 / 合并 / 连接测试
+// =========================================================================
+
+/// 用户级配置文件路径（与 Python CLI 引擎共享同一份）。
+pub fn user_config_path() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .map(|h| Path::new(&h).join(".config").join("ai-reader").join("llm_config.json"))
+        .unwrap_or_else(|_| PathBuf::from("llm_config.json"))
+}
+
+/// 配置合法性校验：endpoint 协议、temperature 与 max_output_tokens 范围。
+pub fn validate_config(cfg: &LlmConfig) -> Result<(), String> {
+    if !(cfg.endpoint.starts_with("http://") || cfg.endpoint.starts_with("https://")) {
+        return Err(format!("endpoint 必须以 http:// 或 https:// 开头，当前: {}", cfg.endpoint));
+    }
+    if !(0.0..=2.0).contains(&cfg.temperature) {
+        return Err(format!("temperature 必须在 0.0 ~ 2.0 之间，当前: {}", cfg.temperature));
+    }
+    if !(1..=8192).contains(&cfg.max_output_tokens) {
+        return Err(format!("max_output_tokens 必须在 1 ~ 8192 之间，当前: {}", cfg.max_output_tokens));
+    }
+    Ok(())
+}
+
+/// 保存用户级配置：校验 → 目录自建 → 整文件覆写（JSON pretty，便于手改对照）。
+pub fn save_user_config(path: &Path, cfg: &LlmConfig) -> Result<(), String> {
+    validate_config(cfg)?;
+    let parent = path.parent().ok_or_else(|| format!("配置路径非法: {}", path.display()))?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
+    let text = serde_json::to_string_pretty(cfg).map_err(|e| format!("配置序列化失败: {}", e))?;
+    std::fs::write(path, text).map_err(|e| format!("写入配置失败: {}", e))
+}
+
+/// 键级 merge：patch 覆盖 base 同名字段，缺省字段回落基线（语义对齐 Python dict.update）。
+pub fn overlay_config(base: &LlmConfig, patch: Option<&Value>) -> Result<LlmConfig, String> {
+    let mut merged = serde_json::to_value(base).map_err(|e| format!("基线配置序列化失败: {}", e))?;
+    if let Some(Value::Object(map)) = patch {
+        let obj = merged.as_object_mut().ok_or("基线配置不是 JSON 对象")?;
+        for (k, v) in map {
+            obj.insert(k.clone(), v.clone());
+        }
+    }
+    serde_json::from_value(merged).map_err(|e| format!("配置字段非法: {}", e))
+}
+
+/// 连接测试：单次真实调用（不重试），返回时延毫秒；无 key 直接拒绝，错误信息透传 UI。
+pub fn test_llm_connection(client: &dyn LlmClient, config: &LlmConfig) -> Result<u128, String> {
+    if config.api_key.trim().is_empty() {
+        return Err("api_key 未配置，请先填写 API Key".to_string());
+    }
+    let messages = vec![
+        ChatMessage { role: "system", content: "You are a connection test assistant.".to_string() },
+        ChatMessage { role: "user", content: "ping".to_string() },
+    ];
+    let start = std::time::Instant::now();
+    client.chat(config, &messages)?;
+    Ok(start.elapsed().as_millis())
 }
 
 #[cfg(test)]
@@ -428,4 +488,109 @@ pub mod tests {
         assert!(out.is_err(), "401 应转为 Err 而非 panic");
         server.join().unwrap();
     }
+    // ==================== config 设置页能力 (task_07) ====================
+
+    fn temp_dir_path(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "ai_reader_llm_cfg_{}_{}",
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ))
+    }
+
+    #[test]
+    fn save_user_config_roundtrip() {
+        let path = temp_dir_path("roundtrip").join("llm_config.json");
+        let cfg = serde_json::from_value(json!({
+            "endpoint": "https://api.test.com/v1",
+            "api_key": "sk-roundtrip",
+            "model_name": "m1",
+            "temperature": 0.3,
+            "max_output_tokens": 1024,
+            "system_prompt": "人设A"
+        }))
+        .unwrap();
+        save_user_config(&path, &cfg).unwrap();
+        let loaded = LlmConfig::load_from(Some(&path), None);
+        assert_eq!(loaded.api_key, "sk-roundtrip");
+        assert_eq!(loaded.endpoint, "https://api.test.com/v1");
+        assert_eq!(loaded.model_name, "m1");
+        assert_eq!(loaded.temperature, 0.3);
+        assert_eq!(loaded.max_output_tokens, 1024);
+        assert_eq!(loaded.system_prompt, "人设A");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn save_user_config_creates_missing_dirs() {
+        let path = temp_dir_path("dirs").join("a/b/c/llm_config.json");
+        let cfg = LlmConfig::default();
+        save_user_config(&path, &cfg).unwrap();
+        assert!(path.exists(), "多级目录应自动创建");
+        std::fs::remove_dir_all(path.parent().unwrap().parent().unwrap().parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn validate_config_rules() {
+        let mut cfg = LlmConfig::default();
+        assert!(validate_config(&cfg).is_ok(), "内建缺省应合法");
+
+        cfg.endpoint = "ftp://bad".into();
+        assert!(validate_config(&cfg).is_err(), "非 http(s) endpoint 应拒绝");
+        cfg.endpoint = "https://ok.example.com/v1".into();
+
+        cfg.temperature = 2.5;
+        assert!(validate_config(&cfg).is_err(), "temperature 越界应拒绝");
+        cfg.temperature = 0.7;
+
+        cfg.max_output_tokens = 0;
+        assert!(validate_config(&cfg).is_err(), "max_output_tokens 下界应拒绝");
+        cfg.max_output_tokens = 100000;
+        assert!(validate_config(&cfg).is_err(), "max_output_tokens 上界应拒绝");
+    }
+
+    #[test]
+    fn test_llm_connection_without_key_never_calls_client() {
+        let mock = MockLlmClient::new(vec![Ok("不应被调用".to_string())]);
+        let calls = mock.calls.clone();
+        let cfg = test_config("");
+        let out = test_llm_connection(&mock, &cfg);
+        assert!(out.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "无 key 不得发起任何调用");
+    }
+
+    #[test]
+    fn test_llm_connection_success_reports_latency() {
+        let mock = MockLlmClient::new(vec![Ok("pong".to_string())]);
+        let calls = mock.calls.clone();
+        let cfg = test_config("sk-ok");
+        let ms = test_llm_connection(&mock, &cfg).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "连接测试只调一次不重试");
+        assert!(ms >= 0);
+    }
+
+    #[test]
+    fn test_llm_connection_failure_propagates_message() {
+        let mock = MockLlmClient::new(vec![Err("401 Unauthorized".to_string())]);
+        let cfg = test_config("sk-bad");
+        let err = test_llm_connection(&mock, &cfg).unwrap_err();
+        assert!(err.contains("401"), "错误信息应透传给 UI 展示");
+    }
+
+    #[test]
+    fn overlay_config_merges_patch_keys() {
+        let base = test_config("sk-base");
+        let patch = json!({"api_key": "sk-new", "model_name": "new-model"});
+        let merged = overlay_config(&base, Some(&patch)).unwrap();
+        assert_eq!(merged.api_key, "sk-new");
+        assert_eq!(merged.model_name, "new-model");
+        assert_eq!(merged.endpoint, base.endpoint, "未覆盖字段保持基线");
+        // 无 patch → 原样
+        let same = overlay_config(&base, None).unwrap();
+        assert_eq!(same.api_key, "sk-base");
+    }
 }
+

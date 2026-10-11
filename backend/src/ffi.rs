@@ -156,6 +156,31 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
                 "template_type": template_type
             }))
         }
+        "config.get" => {
+            let cfg = crate::llm::LlmConfig::load();
+            Ok(json!({
+                "config": cfg,
+                "config_path": crate::llm::user_config_path().to_string_lossy(),
+            }))
+        }
+        "config.save" => {
+            // payload.config 允许部分字段：键级 merge 到当前生效配置后整体校验并覆写
+            let base = crate::llm::LlmConfig::load();
+            let cfg = crate::llm::overlay_config(&base, val.get("config"))?;
+            crate::llm::save_user_config(&crate::llm::user_config_path(), &cfg)?;
+            Ok(json!({
+                "saved": true,
+                "config": cfg,
+                "config_path": crate::llm::user_config_path().to_string_lossy(),
+            }))
+        }
+        "config.test" => {
+            // payload.config 可携带未保存的表单值先行验证；单次调用不重试
+            let base = crate::llm::LlmConfig::load();
+            let cfg = crate::llm::overlay_config(&base, val.get("config"))?;
+            let latency_ms = crate::llm::test_llm_connection(&crate::llm::UreqLlmClient, &cfg)?;
+            Ok(json!({ "ok": true, "latency_ms": latency_ms as f64 }))
+        }
         _ => Err(format!("Unknown action: {}", action)),
     }
 }

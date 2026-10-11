@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/reader_theme.dart';
 import '../../../core/ffi/reader_engine_bridge.dart';
+import '../../settings/presentation/settings_dialog.dart';
 
 /// 极简书目模型
 class LibraryBookItem {
@@ -180,6 +181,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ),
                     Row(
                       children: [
+                        IconButton(
+                          tooltip: '伴读 LLM 设置',
+                          icon: Icon(
+                            Icons.settings_outlined,
+                            size: 20.0,
+                            color: textSecondary,
+                          ),
+                          onPressed: () => LlmSettingsDialog.show(context, widget.bridge),
+                        ),
+                        const SizedBox(width: 8.0),
                         IconButton(
                           tooltip: '切换日夜模式',
                           icon: Icon(
