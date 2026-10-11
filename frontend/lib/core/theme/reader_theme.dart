@@ -61,35 +61,41 @@ class ReaderTheme {
   static const Duration chromeFadeDuration = Duration(milliseconds: 300);
   static const Duration drawerSlideDuration = Duration(milliseconds: 240);
 
-  /// 亮色 ThemeData
+  /// 亮色 ThemeData（界面 chrome 用无衬线，见 DESIGN.md §3；正文在 bodyLarge 显式 Duo）
   static ThemeData get lightTheme {
     return ThemeData(
       brightness: Brightness.light,
       scaffoldBackgroundColor: lightBgCanvas,
+      fontFamily: 'Inter',
+      fontFamilyFallback: sansFontFamilyFallback,
       colorScheme: const ColorScheme.light(
         primary: lightAccentFocus,
         surface: lightBgSurface,
         onSurface: lightTextPrimary,
         outline: lightBorderSubtle,
       ),
-      fontFamily: 'Source Han Serif',
-      fontFamilyFallback: serifFontFamilyFallback,
       textTheme: const TextTheme(
         bodyLarge: TextStyle(
+          fontFamily: 'iA Writer Duo',
+          fontFamilyFallback: serifFontFamilyFallback,
           fontSize: 18.5,
           height: bodyLineHeight,
-          letterSpacing: 0.15,
+          letterSpacing: -0.2,
           color: lightTextPrimary,
           fontWeight: FontWeight.w400,
         ),
         bodyMedium: TextStyle(
+          fontFamily: 'iA Writer Duo',
+          fontFamilyFallback: serifFontFamilyFallback,
           fontSize: 16.0,
           height: bodyLineHeight,
-          letterSpacing: 0.1,
+          letterSpacing: -0.15,
           color: lightTextPrimary,
         ),
         labelSmall: TextStyle(
-          fontSize: 12.0,
+          fontFamily: 'iA Writer Mono',
+          fontFamilyFallback: monoFontFamilyFallback,
+          fontSize: 11.5,
           color: lightTextSecondary,
           letterSpacing: 0.3,
         ),
@@ -97,35 +103,41 @@ class ReaderTheme {
     );
   }
 
-  /// 暗色 ThemeData
+  /// 暗色 ThemeData（同亮色结构）
   static ThemeData get darkTheme {
     return ThemeData(
       brightness: Brightness.dark,
       scaffoldBackgroundColor: darkBgCanvas,
+      fontFamily: 'Inter',
+      fontFamilyFallback: sansFontFamilyFallback,
       colorScheme: const ColorScheme.dark(
         primary: darkAccentFocus,
         surface: darkBgSurface,
         onSurface: darkTextPrimary,
         outline: darkBorderSubtle,
       ),
-      fontFamily: 'Source Han Serif',
-      fontFamilyFallback: serifFontFamilyFallback,
       textTheme: const TextTheme(
         bodyLarge: TextStyle(
+          fontFamily: 'iA Writer Duo',
+          fontFamilyFallback: serifFontFamilyFallback,
           fontSize: 18.5,
           height: bodyLineHeight,
-          letterSpacing: 0.15,
+          letterSpacing: -0.2,
           color: darkTextPrimary,
           fontWeight: FontWeight.w400,
         ),
         bodyMedium: TextStyle(
+          fontFamily: 'iA Writer Duo',
+          fontFamilyFallback: serifFontFamilyFallback,
           fontSize: 16.0,
           height: bodyLineHeight,
-          letterSpacing: 0.1,
+          letterSpacing: -0.15,
           color: darkTextPrimary,
         ),
         labelSmall: TextStyle(
-          fontSize: 12.0,
+          fontFamily: 'iA Writer Mono',
+          fontFamilyFallback: monoFontFamilyFallback,
+          fontSize: 11.5,
           color: darkTextSecondary,
           letterSpacing: 0.3,
         ),

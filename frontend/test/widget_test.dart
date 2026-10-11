@@ -48,13 +48,13 @@ void main() {
         ),
       );
 
-      expect(find.text('⚡️ 通俗'), findsOneWidget);
-      expect(find.text('🔗 逻辑'), findsOneWidget);
-      expect(find.text('🧐 批判'), findsOneWidget);
-      expect(find.text('📖 术语'), findsOneWidget);
-      expect(find.text('🖍 高亮'), findsOneWidget);
+      expect(find.text('通俗'), findsOneWidget);
+      expect(find.text('逻辑'), findsOneWidget);
+      expect(find.text('批判'), findsOneWidget);
+      expect(find.text('术语'), findsOneWidget);
+      expect(find.text('高亮'), findsOneWidget);
 
-      await tester.tap(find.text('🔗 逻辑'));
+      await tester.tap(find.text('逻辑'));
       expect(selected, CognitiveTemplateType.logic);
     });
   });

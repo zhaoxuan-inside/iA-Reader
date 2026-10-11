@@ -292,7 +292,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         _selectionPosition = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('🖍 已添加高亮标记'), duration: Duration(milliseconds: 1200)),
+        const SnackBar(content: Text('已添加高亮标记'), duration: Duration(milliseconds: 1200)),
       );
     }
   }

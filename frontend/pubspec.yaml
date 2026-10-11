@@ -22,3 +22,21 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # OFL 合规：许可证随字体一并分发
+  assets:
+    - assets/fonts/LICENSE-iA-Fonts.txt
+
+  fonts:
+    - family: iA Writer Duo
+      fonts:
+        - asset: assets/fonts/iAWriterDuoS-Regular.ttf
+        - asset: assets/fonts/iAWriterDuoS-Italic.ttf
+          style: italic
+        - asset: assets/fonts/iAWriterDuoS-Bold.ttf
+          weight: 700
+    - family: iA Writer Mono
+      fonts:
+        - asset: assets/fonts/iAWriterMonoS-Regular.ttf
+        - asset: assets/fonts/iAWriterMonoS-Bold.ttf
+          weight: 700

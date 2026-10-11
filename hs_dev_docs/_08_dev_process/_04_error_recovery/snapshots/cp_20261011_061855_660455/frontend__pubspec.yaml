@@ -1,0 +1,42 @@
+name: ai_reader_frontend
+description: AI Reader - 5-Platform Distraction-Free AI Reading Workbench (Flutter)
+publish_to: "none"
+version: 0.0.5+5
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.4.0
+  ffi: ^2.1.0
+  path: ^1.8.3
+  flutter_markdown: ^0.6.17
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  # OFL 合规：许可证随字体一并分发
+  assets:
+    - assets/fonts/LICENSE-iA-Fonts.txt
+
+  fonts:
+    - family: iA Writer Duo
+      fonts:
+        - asset: assets/fonts/iAWriterDuoS-Regular.ttf
+        - asset: assets/fonts/iAWriterDuoS-Italic.ttf
+          style: italic
+        - asset: assets/fonts/iAWriterDuoS-Bold.ttf
+          weight: 700
+    - family: iA Writer Mono
+      fonts:
+        - asset: assets/fonts/iAWriterMonoS-Regular.ttf
+        - asset: assets/fonts/iAWriterMonoS-Bold.ttf
+          weight: 700

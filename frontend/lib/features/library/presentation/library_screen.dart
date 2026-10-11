@@ -201,14 +201,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           onPressed: widget.onToggleTheme,
                         ),
                         const SizedBox(width: 8.0),
-                        ElevatedButton.icon(
+                        TextButton.icon(
                           onPressed: _showImportFileDialog,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: accentColor,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: accentColor,
+                            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 10.0),
                           ),
                           icon: const Icon(Icons.add, size: 18.0),
                           label: const Text('导入文档', style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w500)),

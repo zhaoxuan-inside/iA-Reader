@@ -183,26 +183,26 @@ class ReaderEngineBridge {
       } else {
         switch (tpl) {
           case 'logic':
-            analysis = '【🔗 逻辑链条推理】针对选区：“$text”\n\n'
+            analysis = '【逻辑链条推理】针对选区：“$text”\n\n'
                 '1. 前置假设：所有写事务必须在主库落盘前先行写入持久层日志。\n'
                 '2. 因果传导：顺序日志追加极大消除了随机寻道耗时，解耦读写锁。\n'
                 '3. 潜在隐患：检查点滞后将引发日志膨胀，需配置动态截断。';
             break;
           case 'critical':
-            analysis = '【🧐 批判性审视】针对选区：“$text”\n\n'
+            analysis = '【批判性审视】针对选区：“$text”\n\n'
                 '1. 边界局限：无锁读快照在极端内存受限场景下可能带来快照膨胀。\n'
                 '2. 权衡取舍：该方案用存储空间换取并发读性能，并非万能银弹。\n'
                 '3. 改进空间：引入冷热数据分层可进一步规避大快照抖动。';
             break;
           case 'term':
-            analysis = '【📖 核心术语剖析】针对选区：“$text”\n\n'
+            analysis = '【核心术语剖析】针对选区：“$text”\n\n'
                 '• WAL (Write-Ahead Logging)：预写式日志，用于保证 ACID 中的原子性与持久性。\n'
                 '• MVCC (多版本并发控制)：通过维护数据多版本快照实现读写互不阻塞。\n'
                 '• 检查点 (Checkpoint)：将 WAL 日志中已提交事务合并回主数据库并截断日志。';
             break;
           case 'general':
           default:
-            analysis = '【⚡️ 通俗解读】针对选区：“$text”\n\n'
+            analysis = '【通俗解读】针对选区：“$text”\n\n'
                 '简单来说，就像食堂打饭：以前是打菜师傅和盛饭师傅抢同一个勺子，'
                 '现在分成两条独立传送带，谁也不用等谁，大大提升了整体效率。';
             break;

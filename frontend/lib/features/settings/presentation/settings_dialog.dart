@@ -209,27 +209,21 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
     );
   }
 
+  UnderlineInputBorder _hairline(Color c) =>
+      UnderlineInputBorder(borderSide: BorderSide(color: c, width: 1.0));
+
   InputDecoration _decoration(String label, {Widget? suffix}) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // iA 语言：无框输入，仅一条发丝底线（ADR_006）
     return InputDecoration(
       labelText: label,
       labelStyle: TextStyle(
           fontSize: 12.5, color: isDark ? Colors.white60 : Colors.black54),
       isDense: true,
       suffixIcon: suffix,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        borderSide: BorderSide(color: isDark ? Colors.white24 : Colors.black12),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8.0),
-        borderSide: BorderSide(
-            color: Theme.of(context).colorScheme.primary, width: 1.4),
-      ),
+      border: _hairline(isDark ? Colors.white24 : Colors.black12),
+      enabledBorder: _hairline(isDark ? Colors.white24 : Colors.black12),
+      focusedBorder: _hairline(Theme.of(context).colorScheme.primary),
     );
   }
 
@@ -398,15 +392,14 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
                       child: const Text('取消', style: TextStyle(fontSize: 13.0)),
                     ),
                     const SizedBox(width: 8.0),
-                    ElevatedButton(
+                    TextButton(
                       key: const Key('settings_save_button'),
                       onPressed: _saving ? null : _save,
-                      style: ElevatedButton.styleFrom(
-                        elevation: 0,
+                      style: TextButton.styleFrom(
+                        foregroundColor:
+                            Theme.of(context).colorScheme.primary,
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 18.0, vertical: 12.0),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8.0)),
+                            horizontal: 14.0, vertical: 12.0),
                       ),
                       child: _saving
                           ? const SizedBox(
