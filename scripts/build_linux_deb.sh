@@ -31,7 +31,10 @@ cp "${ROOT_DIR}/packaging/linux/deb/DEBIAN/control" "${BUILD_ROOT}/DEBIAN/"
 cp -r "${ROOT_DIR}/frontend/build/linux/x64/release/bundle/"* "${BUILD_ROOT}/usr/lib/ai-reader/"
 cp "${ROOT_DIR}/backend/target/release/libreader_core.so" "${BUILD_ROOT}/usr/lib/ai-reader/lib/"
 ln -sf /usr/lib/ai-reader/ai_reader "${BUILD_ROOT}/usr/bin/ai_reader"
-cp "${ROOT_DIR}/packaging/linux/deb/usr/share/applications/ai-reader.desktop" "${BUILD_ROOT}/usr/share/applications/"
+cp "${ROOT_DIR}/packaging/linux/ai-reader.desktop" "${BUILD_ROOT}/usr/share/applications/"
+mkdir -p "${BUILD_ROOT}/usr/share/icons/hicolor/512x512/apps"
+cp "${ROOT_DIR}/packaging/icon/app_icon_512.png" "${BUILD_ROOT}/usr/share/icons/hicolor/512x512/apps/ai-reader.png"
 
-dpkg-deb --build --root-owner-group "${BUILD_ROOT}" "${OUTPUT_DIR}/ai-reader_1.0.0_amd64.deb"
-echo "[SUCCESS] Generated Debian Package: ${OUTPUT_DIR}/ai-reader_1.0.0_amd64.deb"
+DEB_VERSION=$(grep -m1 '^Version:' "${ROOT_DIR}/packaging/linux/deb/DEBIAN/control" | awk '{print $2}')
+dpkg-deb --build --root-owner-group "${BUILD_ROOT}" "${OUTPUT_DIR}/ai-reader_${DEB_VERSION}_amd64.deb"
+echo "[SUCCESS] Generated Debian Package: ${OUTPUT_DIR}/ai-reader_${DEB_VERSION}_amd64.deb"
