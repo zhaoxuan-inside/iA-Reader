@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 
 /// 六元组响应信封结构 (InvokeEnvelope)
@@ -44,52 +45,74 @@ typedef ReaderInvokeDart = ffi.Pointer<Utf8> Function(
 typedef ReaderFreeStringC = ffi.Void Function(ffi.Pointer<Utf8> ptr);
 typedef ReaderFreeStringDart = void Function(ffi.Pointer<Utf8> ptr);
 
+/// 原生 FFI 同步调用（在独立 isolate 中执行）：完整完成 调用→取串→释放 内存生命周期。
+/// LLM 伴读等秒级 action 在此运行，UI isolate 不被阻塞。
+String _nativeInvokeSync(String libraryPath, String action, String payloadJson) {
+  final lib = ffi.DynamicLibrary.open(libraryPath);
+  final invokeFn = lib
+      .lookup<ffi.NativeFunction<ReaderInvokeC>>('ai_reader_invoke')
+      .asFunction<ReaderInvokeDart>();
+  final freeFn = lib
+      .lookup<ffi.NativeFunction<ReaderFreeStringC>>('ai_reader_free_string')
+      .asFunction<ReaderFreeStringDart>();
+
+  final actionPtr = action.toNativeUtf8();
+  final payloadPtr = payloadJson.toNativeUtf8();
+  try {
+    final resultPtr = invokeFn(actionPtr, payloadPtr);
+    final resultStr = resultPtr.toDartString();
+    freeFn(resultPtr);
+    return resultStr;
+  } finally {
+    malloc.free(actionPtr);
+    malloc.free(payloadPtr);
+  }
+}
+
 /// C-ABI 原生 FFI 桥接客户端 (ReaderEngineBridge)
 /// 支持真实加载本地 libreader_core.so / dylib / dll 动态库，并在未安装原生库或离线时平滑切至启发式确定性引擎
+/// 原生调用统一在 Isolate.run 中执行：秒级 LLM 伴读与重计算不再冻结 UI 线程
 class ReaderEngineBridge {
   static ReaderEngineBridge? _instance;
-  final ReaderInvokeDart? _nativeInvoke;
-  final ReaderFreeStringDart? _nativeFreeString;
+  /// 已成功解析并验证可打开的动态库路径（isolate 内每次调用重新 open，指针不可跨 isolate）
+  final String? _libraryPath;
 
   // 内存中模拟存储（用于离线开发或无动态库环境测试）
   final List<Map<String, dynamic>> _inMemoryAnnotations = [];
 
-  ReaderEngineBridge._({
-    ReaderInvokeDart? nativeInvoke,
-    ReaderFreeStringDart? nativeFreeString,
-  })  : _nativeInvoke = nativeInvoke,
-        _nativeFreeString = nativeFreeString;
+  ReaderEngineBridge._({String? libraryPath}) : _libraryPath = libraryPath;
 
   factory ReaderEngineBridge({String? libraryPath}) {
     if (_instance != null) return _instance!;
 
-    ReaderInvokeDart? invokeFn;
-    ReaderFreeStringDart? freeFn;
-
+    String? resolved;
     try {
-      final lib = _openDynamicLibrary(libraryPath);
-      if (lib != null) {
-        invokeFn = lib
-            .lookup<ffi.NativeFunction<ReaderInvokeC>>('ai_reader_invoke')
-            .asFunction<ReaderInvokeDart>();
-        freeFn = lib
-            .lookup<ffi.NativeFunction<ReaderFreeStringC>>('ai_reader_free_string')
-            .asFunction<ReaderFreeStringDart>();
+      resolved = _resolveLibraryPath(libraryPath);
+      if (resolved != null) {
+        // 主 isolate 做一次能力验证：符号可查；实际调用全部发生在工作 isolate
+        final lib = ffi.DynamicLibrary.open(resolved);
+        lib.lookup<ffi.NativeFunction<ReaderInvokeC>>('ai_reader_invoke');
+        lib.lookup<ffi.NativeFunction<ReaderFreeStringC>>('ai_reader_free_string');
       }
     } catch (_) {
       // 动态库未就绪时，平滑降级至进程内启发式计算通道
+      resolved = null;
     }
 
-    _instance = ReaderEngineBridge._(
-      nativeInvoke: invokeFn,
-      nativeFreeString: freeFn,
-    );
+    _instance = ReaderEngineBridge._(libraryPath: resolved);
     return _instance!;
   }
 
-  static ffi.DynamicLibrary? _openDynamicLibrary(String? customPath) {
+  static String? _resolveLibraryPath(String? customPath) {
     if (customPath != null && File(customPath).existsSync()) {
-      return ffi.DynamicLibrary.open(customPath);
+      return customPath;
+    }
+
+    // flutter test 环境不做原生库自动发现：
+    // 1) 测试须确定性走内存 mock 通道（hermetic，不依赖机器上是否安装了真库）；
+    // 2) Isolate.run 为真实异步，在测试 FakeAsync 下永不完成，会令 pumpAndSettle 超时。
+    if (Platform.environment['FLUTTER_TEST'] == 'true') {
+      return null;
     }
 
     final candidatePaths = <String>[];
@@ -115,33 +138,27 @@ class ReaderEngineBridge {
     for (final path in candidatePaths) {
       if (File(path).existsSync()) {
         try {
-          return ffi.DynamicLibrary.open(path);
+          ffi.DynamicLibrary.open(path);
+          return path;
         } catch (_) {}
       }
     }
     return null;
   }
 
-  /// 同步或异步调用底层六元组 action
+  /// 调用底层六元组 action：原生 FFI 在独立 isolate 中执行，避免秒级 LLM 调用阻塞 UI。
   Future<InvokeEnvelope> invoke(String action, Map<String, dynamic> payload) async {
     final payloadJson = jsonEncode(payload);
+    final libPath = _libraryPath;
 
-    if (_nativeInvoke != null) {
-      final actionPtr = action.toNativeUtf8();
-      final payloadPtr = payloadJson.toNativeUtf8();
+    if (libPath != null) {
       try {
-        final resultPtr = _nativeInvoke!(actionPtr, payloadPtr);
-        final resultStr = resultPtr.toDartString();
-        if (_nativeFreeString != null) {
-          _nativeFreeString!(resultPtr);
-        }
+        final resultStr =
+            await Isolate.run(() => _nativeInvokeSync(libPath, action, payloadJson));
         final Map<String, dynamic> parsed = jsonDecode(resultStr);
         return InvokeEnvelope.fromJson(parsed);
       } catch (_) {
-        // 原生调用异常时回退到启发式引擎
-      } finally {
-        malloc.free(actionPtr);
-        malloc.free(payloadPtr);
+        // isolate / 原生调用异常时回退到启发式引擎
       }
     }
 

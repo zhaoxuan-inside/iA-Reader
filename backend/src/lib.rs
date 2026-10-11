@@ -5,6 +5,7 @@ pub mod domain;
 pub mod storage;
 pub mod parser;
 pub mod nlp;
+pub mod llm;
 pub mod service;
 pub mod ffi;
 

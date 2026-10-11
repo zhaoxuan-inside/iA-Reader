@@ -55,3 +55,14 @@
 - **更新时间**：`2026-10-10T13:37:51Z`
 ---
 
+### 任务简述：task_06_real_llm_companion
+- **标题**：接入真实LLM认知伴读到Rust桌面主链路（重试/降级/持久化/isolate化）
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：接入真实LLM认知伴读到Rust桌面主链路（重试/降级/持久化/isolate化）
+- **详情索引**：`_02_task_detail/_01_task_06_real_llm_companion/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_06_real_llm_companion/_00_context_pack.md`
+- **更新时间**：`2026-10-11T01:04:24Z`
+---
+

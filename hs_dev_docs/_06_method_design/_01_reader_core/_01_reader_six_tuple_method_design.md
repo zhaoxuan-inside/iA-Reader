@@ -56,8 +56,9 @@
 - `annotation_manage_recall`: 边注保存回调，刷新桌面端 Margin 栏与移动端微标。
 
 ### 2.6 AI 伴读与认知模板方法组：`ai_companion_stream`
-- `ai_companion_stream`: 主方法，装配 4 大认知模板上下文并发起流式交互；
+- `ai_companion_stream`: 主方法，读取 LLM 配置（`~/.config/ai-reader/llm_config.json` → `config/default_llm_config.json` → 内建缺省），装配 4 大认知模板上下文，经 `LlmClient` seam（生产 `UreqLlmClient`，OpenAI 兼容 `/chat/completions`）发起真实调用，指数退避重试至多 3 次；api_key 未配置时不发请求直接降级（零计费）；
 - `ai_companion_stream_compensate`: 补偿方法，取消中断的请求并清理未完成会话片段；
-- `ai_companion_stream_fallback`: 降级策略，当外部 API 超时或不可用时，降级输出本地预置的启发式思考引导卡片；
-- `ai_companion_stream_metrics`: 记录首字延迟 (TTFT)、总耗时与 Token 开销；
+- `ai_companion_stream_fallback`: 降级策略，api_key 缺失或重试耗尽时按模板输出本地确定性启发思考卡片（带离线标识），会话以 `description=offline_fallback` 入库留痕；
+- `ai_companion_stream_metrics`: 记录总耗时（latency_ms）与轮次；流式 TTFT 度量待 task_07 FFI 轮询迭代落地（ADR 003）；
 - `ai_companion_stream_recall`: 伴读响应完毕回调，引导用户一键沉淀为正文边注。
+- 测试面：`chat_with_retry`（sleep 注入断言退避序列）、`build_companion_messages`（4 模板组装）、service 降级编排（mock 客户端注入）；传输层以本地假 OpenAI 服务器验证 Bearer 头与响应解析（`cargo test` 13 项）。

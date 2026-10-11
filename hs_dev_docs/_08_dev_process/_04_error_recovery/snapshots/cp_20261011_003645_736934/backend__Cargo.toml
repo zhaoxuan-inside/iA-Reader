@@ -1,0 +1,18 @@
+[package]
+name = "ai-reader-core"
+version = "2.0.0"
+edition = "2021"
+authors = ["AI Reader Team"]
+description = "High-performance reading, NLP graph and cognitive companion engine"
+
+[lib]
+name = "reader_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rusqlite = { version = "0.31", features = ["bundled", "backup", "chrono"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+regex = "1.10"

@@ -1,7 +1,6 @@
 // backend/src/storage.rs
 // SQLite 本地存储实现 (支持 WAL 模式与原子事务)
 
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use rusqlite::{params, Connection, Result};
 use crate::domain::*;
@@ -464,8 +463,8 @@ impl SqliteStorage {
     pub fn save_ai_conversation(&self, conv: &AiConversation) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO ai_conversation (book_id, section_id, template_type, prompt, response, latency_ms, is_del, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1)",
-            params![conv.book_id, conv.section_id, conv.template_type, conv.prompt, conv.response, conv.latency_ms],
+            "INSERT INTO ai_conversation (book_id, section_id, description, template_type, prompt, response, latency_ms, is_del, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1)",
+            params![conv.book_id, conv.section_id, conv.description, conv.template_type, conv.prompt, conv.response, conv.latency_ms],
         )?;
         Ok(conn.last_insert_rowid())
     }

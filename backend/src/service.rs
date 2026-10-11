@@ -7,15 +7,25 @@ use crate::domain::*;
 use crate::storage::SqliteStorage;
 use crate::parser::*;
 use crate::nlp::*;
+use crate::llm::{
+    build_companion_messages, chat_with_retry, LlmClient, LlmConfig, UreqLlmClient, BASE_DELAY_MS,
+    MAX_RETRIES,
+};
 
 pub struct ReaderService {
     pub storage: SqliteStorage,
+    llm_client: Box<dyn LlmClient>,
 }
 
 impl ReaderService {
     // @PublicAPI
     pub fn new(storage: SqliteStorage) -> Self {
-        Self { storage }
+        Self { storage, llm_client: Box::new(UreqLlmClient) }
+    }
+
+    /// 测试注入口：替换传输层 seam，业务编排零网络依赖可测。
+    pub fn with_llm_client(storage: SqliteStorage, llm_client: Box<dyn LlmClient>) -> Self {
+        Self { storage, llm_client }
     }
 
     // =========================================================================
@@ -348,22 +358,51 @@ impl ReaderService {
     // =========================================================================
     // 6. AI 伴读与认知模板六元组 (ai_companion_stream)
     // =========================================================================
+    // @PublicAPI
     pub fn ai_companion_stream(&self, book_id: i64, template_type: &str, selected_text: &str, prompt: &str) -> Result<String, String> {
+        let config = LlmConfig::load();
+        self.ai_companion_stream_with(&config, book_id, template_type, selected_text, prompt)
+    }
+
+    /// 六元组主方法核心：注入配置以隔离测试（生产入口 `ai_companion_stream` 每次调用重读配置，
+    /// 与 Python CLI 引擎行为一致，用户改配置无需重启进程）。
+    pub fn ai_companion_stream_with(
+        &self,
+        config: &LlmConfig,
+        book_id: i64,
+        template_type: &str,
+        selected_text: &str,
+        prompt: &str,
+    ) -> Result<String, String> {
         let start = Instant::now();
-        
-        let response = match template_type {
-            "general" => format!("【通俗解读】\n关于「{}」：我们可以将其比作现实生活中的模块化积木。核心要点在于降低信息耦合度，使得阅读者可以直观把握主旨。\n\n答复：{}", selected_text, prompt),
-            "logic" => format!("【逻辑链剖析】\n1. 论点前提：作者在段落「{}」中确立了前置假设；\n2. 推导过程：通过对比反例证明了必要性；\n3. 核心结论：论证结构完整。\n\n针对追问：{}", selected_text, prompt),
-            "critical" => format!("【批判性辩驳】\n反向视角审视「{}」：该论述可能忽略了边界约束条件，在极端高并发或非理想环境下可能存在失效风险。\n\n答复：{}", selected_text, prompt),
-            "term" => format!("【术语卡拆解】\n- 核心术语：{}\n- 定义：现代数字阅读中兼顾排版与语义穿透的核心概念；\n- 衍生应用：与知识图谱及思维导图强联动。\n\n解析：{}", selected_text, prompt),
-            _ => self.ai_companion_stream_fallback(template_type, selected_text)?,
+        let messages = build_companion_messages(template_type, selected_text, prompt, &config.system_prompt);
+
+        // api_key 未配置：不发 HTTP、零计费，直接离线启发式卡片（PRD §4.1 离线可用性）
+        let (response, offline) = if config.api_key.trim().is_empty() {
+            eprintln!("[FALLBACK] api_key 未配置，走离线启发式卡片（配置路径: ~/.config/ai-reader/llm_config.json）");
+            (self.ai_companion_stream_fallback(template_type, selected_text)?, true)
+        } else {
+            match chat_with_retry(
+                self.llm_client.as_ref(),
+                config,
+                &messages,
+                MAX_RETRIES,
+                BASE_DELAY_MS,
+                |d| std::thread::sleep(d),
+            ) {
+                Ok(content) => (content, false),
+                Err(err) => {
+                    eprintln!("[FALLBACK] LLM 调用重试 {} 次后耗尽: {}，走离线启发式卡片", MAX_RETRIES, err);
+                    (self.ai_companion_stream_fallback(template_type, selected_text)?, true)
+                }
+            }
         };
 
         let conv = AiConversation {
             id: 0,
             created_at: String::new(),
             updated_at: String::new(),
-            description: None,
+            description: if offline { Some("offline_fallback".to_string()) } else { None },
             is_del: 0,
             version: 1,
             book_id,
@@ -373,7 +412,10 @@ impl ReaderService {
             response: response.clone(),
             latency_ms: start.elapsed().as_secs_f64() * 1000.0,
         };
-        let _ = self.storage.save_ai_conversation(&conv);
+        if let Err(e) = self.storage.save_ai_conversation(&conv) {
+            // 持久化失败不吞异常也不阻断响应：返回仍成功，仅留运维日志（会话是伴读的附属沉淀）
+            eprintln!("[ERROR] AI 会话持久化失败: {}", e);
+        }
 
         self.ai_companion_stream_metrics(conv.latency_ms, 1);
         self.ai_companion_stream_recall(book_id);
@@ -385,9 +427,21 @@ impl ReaderService {
         eprintln!("[COMPENSATE] Cleaned up interrupted AI session for book_id: {}", book_id);
     }
 
+    /// 离线确定性启发卡片（PRD §4.1）：未配置 api_key 或 LLM 重试耗尽时的降级路径，
+    /// 按模板给出确定性思考支架，全部带离线标识，不产生任何网络调用。
     pub fn ai_companion_stream_fallback(&self, template_type: &str, selected_text: &str) -> Result<String, String> {
         eprintln!("[FALLBACK] Offline heuristic template fallback for type: {}", template_type);
-        Ok(format!("【离线启发卡片】\n当前处于离线模式。针对选区「{}」，建议思考：\n1. 作者提出该论点的核心背景是什么？\n2. 有哪些反例能够推翻该结论？", selected_text))
+        let heuristic = match template_type {
+            "general" => format!("【通俗解读】\n关于「{}」：可尝试将其比作熟悉的生活场景或模块化积木，先抓住主旨，再拆解支撑主旨的关键要点。", selected_text),
+            "logic" => format!("【逻辑链剖析】\n1. 论点前提：作者在段落「{}」中确立了哪些前置假设？\n2. 推导过程：论据到结论之间是否存在跳跃？\n3. 核心结论：论证结构是否闭合、有无未覆盖的反例。", selected_text),
+            "critical" => format!("【批判性辩驳】\n反向视角审视「{}」：该论述可能忽略了边界约束条件，在极端或非理想环境下是否存在失效风险？", selected_text),
+            "term" => format!("【术语卡拆解】\n- 核心术语：{}\n- 定义：尝试用自己的语言概括其内涵与外延；\n- 衍生应用：它与本文知识导图中的相邻概念如何关联？", selected_text),
+            _ => format!("【离线启发】\n针对选区「{}」，建议思考：\n1. 作者提出该论点的核心背景是什么？\n2. 有哪些反例能够推翻该结论？", selected_text),
+        };
+        Ok(format!(
+            "【离线模式】当前未连接 LLM 服务（未配置 api_key 或网络不可用），以下为本地启发卡片。\n\n{}",
+            heuristic
+        ))
     }
 
     pub fn ai_companion_stream_metrics(&self, latency_ms: f64, turns: usize) {
@@ -396,5 +450,140 @@ impl ReaderService {
 
     pub fn ai_companion_stream_recall(&self, book_id: i64) {
         println!("[RECALL] ai companion session completed for book_id: {}", book_id);
+    }
+}
+
+#[cfg(test)]
+mod llm_companion_tests {
+    use super::*;
+    use crate::llm::tests::MockLlmClient;
+    use serde_json::json;
+    use std::sync::atomic::Ordering;
+
+    fn temp_db(tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "ai_reader_svc_test_{}_{}.db",
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        path.to_string_lossy().to_string()
+    }
+
+    fn test_config(api_key: &str) -> LlmConfig {
+        serde_json::from_value(json!({
+            "endpoint": "https://api.example.com/v1",
+            "api_key": api_key,
+            "model_name": "test-model",
+            "system_prompt": "测试人设"
+        }))
+        .unwrap()
+    }
+
+    /// ai_conversation 外键指向 book_meta：先落一本真实书籍再测伴读会话。
+    fn seed_book(service: &ReaderService, title: &str) -> i64 {
+        service
+            .storage
+            .save_book(&BookMeta {
+                id: 0,
+                created_at: String::new(),
+                updated_at: String::new(),
+                description: None,
+                is_del: 0,
+                version: 1,
+                title: title.to_string(),
+                author: None,
+                file_path: "/tmp/test_book.md".to_string(),
+                file_hash: "test-hash".to_string(),
+                format: "md".to_string(),
+                total_pages: 0,
+                read_progress: 0.0,
+                last_read_at: None,
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn companion_offline_card_when_api_key_missing_and_no_llm_call() {
+        let db = temp_db("nokey");
+        let mock = MockLlmClient::new(vec![Ok("不应被使用".to_string())]);
+        let calls = mock.calls.clone();
+        let service =
+            ReaderService::with_llm_client(SqliteStorage::init_db(&db).unwrap(), Box::new(mock));
+        let book_id = seed_book(&service, "离线降级之书");
+        let out = service
+            .ai_companion_stream_with(&test_config(""), book_id, "term", "被划选的句子", "")
+            .unwrap();
+        assert!(out.contains("离线"), "缺 api_key 应返回离线卡片，实际: {}", out);
+        assert!(out.contains("被划选的句子"), "卡片应回显选区文本");
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "缺 api_key 不应发起任何 LLM 调用");
+        let convs = service.storage.get_ai_conversations(book_id).unwrap();
+        assert_eq!(convs.len(), 1, "降级会话同样入库留痕");
+        assert!(convs[0].response.contains("离线"));
+        std::fs::remove_file(&db).ok();
+    }
+
+    #[test]
+    fn companion_returns_real_llm_reply_and_persists_conversation() {
+        let db = temp_db("real");
+        let mock = MockLlmClient::new(vec![Ok("【通俗解读】真实模型输出：引力透镜类比玻璃透镜。".to_string())]);
+        let service =
+            ReaderService::with_llm_client(SqliteStorage::init_db(&db).unwrap(), Box::new(mock));
+        let book_id = seed_book(&service, "真实调用之书");
+        let out = service
+            .ai_companion_stream_with(&test_config("sk-test"), book_id, "general", "引力透镜相关段落", "")
+            .unwrap();
+        assert!(out.contains("引力透镜"), "应返回真实 LLM 内容，实际: {}", out);
+        let convs = service.storage.get_ai_conversations(book_id).unwrap();
+        assert_eq!(convs.len(), 1);
+        assert_eq!(convs[0].template_type, "general");
+        assert!(convs[0].response.contains("引力透镜"));
+        assert!(convs[0].latency_ms >= 0.0);
+        std::fs::remove_file(&db).ok();
+    }
+
+    #[test]
+    fn companion_falls_back_after_retries_exhausted() {
+        let db = temp_db("exhaust");
+        let mock = MockLlmClient::new(vec![]);
+        let calls = mock.calls.clone();
+        let service =
+            ReaderService::with_llm_client(SqliteStorage::init_db(&db).unwrap(), Box::new(mock));
+        let book_id = seed_book(&service, "重试耗尽之书");
+        let out = service
+            .ai_companion_stream_with(&test_config("sk-test"), book_id, "critical", "有争议的论述", "为什么?")
+            .unwrap();
+        assert!(out.contains("离线"), "重试耗尽应降级离线卡片，实际: {}", out);
+        assert_eq!(calls.load(Ordering::SeqCst), crate::llm::MAX_RETRIES as usize);
+        let convs = service.storage.get_ai_conversations(book_id).unwrap();
+        assert_eq!(convs.len(), 1);
+        assert!(convs[0].prompt.contains("为什么?"), "原始追问应入库");
+        std::fs::remove_file(&db).ok();
+    }
+
+    #[test]
+    fn companion_offline_conversation_marked_for_audit() {
+        let db = temp_db("audit");
+        let mock = MockLlmClient::new(vec![Ok("真实回复".to_string())]);
+        let service =
+            ReaderService::with_llm_client(SqliteStorage::init_db(&db).unwrap(), Box::new(mock));
+        let book_id = seed_book(&service, "审计标记之书");
+
+        // 离线降级会话带 offline_fallback 标记
+        let _ = service
+            .ai_companion_stream_with(&test_config(""), book_id, "general", "段落A", "")
+            .unwrap();
+        // 真实成功会话无标记
+        let _ = service
+            .ai_companion_stream_with(&test_config("sk-test"), book_id, "general", "段落B", "")
+            .unwrap();
+
+        let convs = service.storage.get_ai_conversations(book_id).unwrap();
+        assert_eq!(convs.len(), 2, "两次会话均应入库");
+        assert_eq!(convs[0].description.as_deref(), Some("offline_fallback"));
+        assert_eq!(convs[1].description, None);
+        std::fs::remove_file(&db).ok();
     }
 }
