@@ -1,33 +1,52 @@
 import 'dart:convert';
 
-/// 标注样式（task_12 先落 highlight；task_13 扩展全样式分类）
+/// 标注样式分类（task_13 D1）：
+/// 背景类（高亮/半高亮）、线条类（下划线/波浪线/删除线）、字型类（加粗/斜体）、批注类
 enum AnnotationStyle {
-  highlight,
-  marginNote,
-  unknown;
+  highlight('highlight', '高亮'),
+  halfHighlight('half_highlight', '半高亮'),
+  underline('underline', '下划线'),
+  wavy('wavy', '波浪线'),
+  strike('strike', '删除线'),
+  bold('bold', '加粗'),
+  italic('italic', '斜体'),
+  marginNote('margin_note', '批注'),
+  unknown('unknown', '未知');
+
+  final String key;
+  final String label;
+  const AnnotationStyle(this.key, this.label);
 
   static AnnotationStyle fromKey(String? key) {
-    switch (key) {
-      case 'highlight':
-        return AnnotationStyle.highlight;
-      case 'margin_note':
-        return AnnotationStyle.marginNote;
-      default:
-        return AnnotationStyle.unknown;
+    for (final s in AnnotationStyle.values) {
+      if (s.key == key) return s;
     }
-  }
-
-  String get key {
-    switch (this) {
-      case AnnotationStyle.highlight:
-        return 'highlight';
-      case AnnotationStyle.marginNote:
-        return 'margin_note';
-      case AnnotationStyle.unknown:
-        return 'unknown';
-    }
+    return AnnotationStyle.unknown;
   }
 }
+
+/// 样式分类组（面板分组展示用，不含 marginNote/unknown）
+final Map<String, List<AnnotationStyle>> annotationStyleGroups = {
+  '背景': [AnnotationStyle.highlight, AnnotationStyle.halfHighlight],
+  '线条': [AnnotationStyle.underline, AnnotationStyle.wavy, AnnotationStyle.strike],
+  '字型': [AnnotationStyle.bold, AnnotationStyle.italic],
+};
+
+/// 固定调色板（task_13 D2）：琥珀为默认高亮主色（DESIGN.md highlight-mark）
+class AnnotationColorSpec {
+  final String hex;
+  final String label;
+  const AnnotationColorSpec(this.hex, this.label);
+}
+
+const List<AnnotationColorSpec> annotationColorPalette = [
+  AnnotationColorSpec('#CA8A04', '琥珀'),
+  AnnotationColorSpec('#007AFF', '蓝'),
+  AnnotationColorSpec('#34C759', '绿'),
+  AnnotationColorSpec('#FF375F', '红'),
+  AnnotationColorSpec('#AF52DE', '紫'),
+  AnnotationColorSpec('#8E8E93', '灰'),
+];
 
 /// 选区级标注：anchor 携带段落内 [startOffset, endOffset) 偏移；
 /// 无偏移的边注（margin note）仅锚定段落。
@@ -50,12 +69,14 @@ class AnnotationItem {
     this.startOffset,
     this.endOffset,
     this.style = AnnotationStyle.highlight,
-    this.colorHex = '#FFE066',
+    this.colorHex = '#CA8A04',
     this.noteText,
   });
 
   bool get hasRange =>
       startOffset != null && endOffset != null && endOffset! > startOffset!;
+
+  bool get isNote => style == AnnotationStyle.marginNote;
 
   /// 归一化 annotation.list 行：
   /// - 真实后端行：anchor_json 为 JSON 字符串；
@@ -87,7 +108,7 @@ class AnnotationItem {
       startOffset: start,
       endOffset: end,
       style: AnnotationStyle.fromKey(row['style'] as String?),
-      colorHex: (row['color'] as String?) ?? '#FFE066',
+      colorHex: (row['color'] as String?) ?? '#CA8A04',
       noteText: row['note_text'] as String?,
     );
   }

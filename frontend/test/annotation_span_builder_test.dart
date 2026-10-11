@@ -37,7 +37,7 @@ void main() {
       final children = span.children!;
       expect(children.map((c) => c.toPlainText()).toList(),
           ['01', '234', '5', '6789ABCDEF']);
-      expect((children[2] as TextSpan).style!.backgroundColor, Colors.red);
+      expect((children[2] as TextSpan).style!.backgroundColor, Colors.red.withOpacity(0.35));
     });
 
     test('区间越界被夹紧，空区间被忽略', () {
@@ -55,6 +55,64 @@ void main() {
       final children = span.children!;
       expect(children.map((c) => c.toPlainText()).toList(),
           ['01', '23', '456789', 'AB', 'CDEF']);
+    });
+  });
+
+  group('全样式渲染映射（task_13 D1）', () {
+    test('下划线', () {
+      final span = AnnotationSpanBuilder.build(
+          text: text,
+          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.underline, color: Colors.blue)],
+          baseStyle: base);
+      final s = (span.children![0] as TextSpan).style!;
+      expect(s.decoration, TextDecoration.underline);
+      expect(s.decorationStyle, TextDecorationStyle.solid);
+      expect(s.backgroundColor, isNull);
+    });
+
+    test('波浪线', () {
+      final span = AnnotationSpanBuilder.build(
+          text: text,
+          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.wavy, color: Colors.green)],
+          baseStyle: base);
+      final s = (span.children![0] as TextSpan).style!;
+      expect(s.decoration, TextDecoration.underline);
+      expect(s.decorationStyle, TextDecorationStyle.wavy);
+      expect(s.decorationColor, Colors.green);
+    });
+
+    test('删除线', () {
+      final span = AnnotationSpanBuilder.build(
+          text: text,
+          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.strike, color: Colors.red)],
+          baseStyle: base);
+      expect((span.children![0] as TextSpan).style!.decoration, TextDecoration.lineThrough);
+    });
+
+    test('加粗 / 斜体', () {
+      final bold = AnnotationSpanBuilder.build(
+          text: text,
+          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.bold, color: Colors.black)],
+          baseStyle: base);
+      expect((bold.children![0] as TextSpan).style!.fontWeight, FontWeight.w700);
+
+      final italic = AnnotationSpanBuilder.build(
+          text: text,
+          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.italic, color: Colors.black)],
+          baseStyle: base);
+      expect((italic.children![0] as TextSpan).style!.fontStyle, FontStyle.italic);
+    });
+
+    test('半高亮：粗底线随 baseStyle.fontSize 缩放，不设背景', () {
+      final span = AnnotationSpanBuilder.build(
+          text: text,
+          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.halfHighlight, color: Colors.amber)],
+          baseStyle: const TextStyle(fontSize: 20.0));
+      final s = (span.children![0] as TextSpan).style!;
+      expect(s.backgroundColor, isNull);
+      expect(s.decoration, TextDecoration.underline);
+      expect(s.decorationThickness, closeTo(20.0 * 0.42, 0.01));
+      expect(s.decorationColor, Colors.amber.withOpacity(0.55));
     });
   });
 }

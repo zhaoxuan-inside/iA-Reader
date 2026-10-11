@@ -18,11 +18,13 @@ enum CognitiveTemplateType {
 /// 直通 4 大认知模板（ADR_006）
 class FloatingActionPill extends StatelessWidget {
   final Function(CognitiveTemplateType template) onTemplateSelected;
+  final VoidCallback? onAnnotationPalette;
   final VoidCallback? onDismiss;
 
   const FloatingActionPill({
     Key? key,
     required this.onTemplateSelected,
+    this.onAnnotationPalette,
     this.onDismiss,
   }) : super(key: key);
 
@@ -32,6 +34,7 @@ class FloatingActionPill extends StatelessWidget {
     final surfaceColor = isDark ? ReaderTheme.darkBgSurface : ReaderTheme.lightBgSurface;
     final borderColor = isDark ? ReaderTheme.darkBorderSubtle : ReaderTheme.lightBorderSubtle;
     final textColor = isDark ? ReaderTheme.darkTextPrimary : ReaderTheme.lightTextPrimary;
+    final accentColor = isDark ? ReaderTheme.darkAccentFocus : ReaderTheme.lightAccentFocus;
 
     return Material(
       color: Colors.transparent,
@@ -46,25 +49,45 @@ class FloatingActionPill extends StatelessWidget {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: CognitiveTemplateType.values.map((tpl) {
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onTemplateSelected(tpl),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
-                child: Text(
-                  tpl.label,
-                  style: TextStyle(
-                    fontFamily: 'iA Writer Mono',
-                    fontSize: 12.0,
-                    fontWeight: FontWeight.w500,
-                    letterSpacing: 0.5,
-                    color: textColor,
+          children: [
+            ...CognitiveTemplateType.values.map((tpl) {
+              return GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => onTemplateSelected(tpl),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+                  child: Text(
+                    tpl.label,
+                    style: TextStyle(
+                      fontFamily: 'iA Writer Mono',
+                      fontSize: 12.0,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 0.5,
+                      color: textColor,
+                    ),
+                  ),
+                ),
+              );
+            }),
+            if (onAnnotationPalette != null)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onAnnotationPalette,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+                  child: Text(
+                    '标注',
+                    style: TextStyle(
+                      fontFamily: 'iA Writer Mono',
+                      fontSize: 12.0,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
+                      color: accentColor,
+                    ),
                   ),
                 ),
               ),
-            );
-          }).toList(),
+          ],
         ),
       ),
     );

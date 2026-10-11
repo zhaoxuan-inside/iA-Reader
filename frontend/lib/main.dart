@@ -11,6 +11,9 @@ import 'features/selection_pill/presentation/floating_action_pill.dart';
 import 'features/selection_pill/domain/pill_anchor.dart';
 import 'features/annotation/domain/annotation_item.dart';
 import 'features/annotation/domain/annotation_span_builder.dart';
+import 'features/annotation/presentation/annotation_palette.dart';
+import 'features/annotation/presentation/annotation_manager.dart';
+import 'features/annotation/presentation/note_editor_popover.dart';
 import 'features/companion/presentation/companion_drawer.dart';
 import 'features/mobile_sheet/presentation/mobile_companion_sheet.dart';
 import 'features/toc_mindmap/presentation/toc_mindmap_drawer.dart';
@@ -154,6 +157,12 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   int? _selEndCache;
   // 最近指针全局坐标：胶囊跟随鼠标位置锚定（task_12 D1）
   Offset? _lastPointerGlobal;
+
+  // 标注系统（task_13）：面板/批注编辑/管理器三态 + 当前调色板颜色
+  bool _isAnnotationPaletteOpen = false;
+  bool _isNoteEditorOpen = false;
+  bool _isAnnotationManagerOpen = false;
+  String _activeAnnotationColor = '#CA8A04';
 
   @override
   void initState() {
@@ -303,13 +312,15 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     }
   }
 
-  /// 高亮所选子串（task_12 D5）：按选区偏移锚定并持久化，不再整段着色
-  Future<void> _handleHighlight() async {
+  /// 应用任意标注样式到当前选区（task_13）：持久化 + 内联渲染
+  Future<void> _applyAnnotation(AnnotationStyle style, String colorHex) async {
     final pId = _selectedParagraphIdCache;
     final start = _selStartCache;
     final end = _selEndCache;
-    _clearSelection();
-    if (pId == null || start == null || end == null || end <= start) return;
+    if (pId == null || start == null || end == null || end <= start) {
+      setState(_clearSelection);
+      return;
+    }
 
     final paragraph = _paragraphs.firstWhere(
       (p) => p['id'] == pId,
@@ -321,8 +332,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
       'book_id': _currentBookId,
       'section_id': sectionId,
       'paragraph_id': pId,
-      'style': 'highlight',
-      'color': _defaultHighlightHex,
+      'style': style.key,
+      'color': colorHex,
       'anchor': {
         'paragraph_id': pId,
         'section_id': sectionId,
@@ -341,13 +352,117 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         paragraphId: pId,
         startOffset: start,
         endOffset: end,
-        style: AnnotationStyle.highlight,
-        colorHex: _defaultHighlightHex,
+        style: style,
+        colorHex: colorHex,
       ));
+      _isAnnotationPaletteOpen = false;
+      _clearSelection();
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('已高亮所选内容'), duration: Duration(milliseconds: 1200)),
+      SnackBar(
+        content: Text('已应用标注：${style.label}'),
+        duration: const Duration(milliseconds: 1200),
+      ),
     );
+  }
+
+  /// 高亮 = 默认琥珀色的直通快路径（胶囊「高亮」按钮，不经面板）
+  Future<void> _handleHighlight() => _applyAnnotation(AnnotationStyle.highlight, _defaultHighlightHex);
+
+  /// 保存人工批注（task_13 D4）：margin_note 样式 + 选区区间 anchor + note_text
+  Future<void> _saveNote(String text) async {
+    final pId = _selectedParagraphIdCache ?? _focusController.activeParagraphId ?? 'p1';
+    final start = _selStartCache;
+    final end = _selEndCache;
+    final paragraph = _paragraphs.firstWhere(
+      (p) => p['id'] == pId,
+      orElse: () => {'section_id': _activeSectionId},
+    );
+    final sectionId = (paragraph['section_id'] as int?) ?? _activeSectionId;
+    final hasRange = start != null && end != null && end > start;
+
+    final res = await widget.bridge.invoke('annotation.save', {
+      'book_id': _currentBookId,
+      'section_id': sectionId,
+      'paragraph_id': pId,
+      'style': 'margin_note',
+      'color': _activeAnnotationColor,
+      'note_text': text,
+      if (hasRange)
+        'anchor': {
+          'paragraph_id': pId,
+          'section_id': sectionId,
+          'start': start,
+          'end': end,
+        },
+    });
+
+    if (!mounted) return;
+    setState(() {
+      _annotations.add(AnnotationItem(
+        id: res.data['annotation_id']?.toString() ?? '',
+        bookId: _currentBookId,
+        sectionId: sectionId,
+        paragraphId: pId,
+        startOffset: hasRange ? start : null,
+        endOffset: hasRange ? end : null,
+        style: AnnotationStyle.marginNote,
+        colorHex: _activeAnnotationColor,
+        noteText: text,
+      ));
+      _isNoteEditorOpen = false;
+      _clearSelection();
+    });
+  }
+
+  /// 删除标注（task_13 D5）
+  Future<void> _deleteAnnotation(String annotationId) async {
+    await widget.bridge.invoke('annotation.delete', {'annotation_id': annotationId});
+    if (!mounted) return;
+    setState(() {
+      _annotations.removeWhere((a) => a.id == annotationId);
+    });
+  }
+
+  /// 摘录：区间标注取原文子串，段落级标注取段首
+  String _excerptFor(AnnotationItem a) {
+    for (final p in _paragraphs) {
+      if (p['id'] == a.paragraphId) {
+        final text = p['text'] as String;
+        if (a.hasRange &&
+            a.endOffset! <= text.length &&
+            a.startOffset! < a.endOffset!) {
+          return text.substring(a.startOffset!, a.endOffset!);
+        }
+        return text.length > 60 ? text.substring(0, 60) : text;
+      }
+    }
+    return a.noteText ?? '';
+  }
+
+  /// 点击正文命中标注区间 → 打开管理器（task_13 D6）
+  void _handleAnnotationTap(String pId, Offset globalPosition) {
+    for (final a in _annotations) {
+      if (a.paragraphId != pId || !a.hasRange) continue;
+      final ro = _paraKeys[pId]?.currentContext?.findRenderObject();
+      if (ro is! RenderBox || !ro.hasSize) continue;
+      final paragraph = _findRenderParagraph(ro);
+      if (paragraph == null) continue;
+      try {
+        final pos = paragraph.getPositionForOffset(paragraph.globalToLocal(globalPosition));
+        final offset = pos.offset;
+        if (offset >= a.startOffset! && offset < a.endOffset!) {
+          setState(() {
+            _selectionPosition = null;
+            _isAnnotationPaletteOpen = false;
+            _isAnnotationManagerOpen = true;
+          });
+          return;
+        }
+      } catch (_) {
+        // 定位失败忽略点击
+      }
+    }
   }
 
   void _clearSelection() {
@@ -467,6 +582,13 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
             onInvoke: (_) {
               if (_isTocOpen) {
                 setState(() => _isTocOpen = false);
+              }
+              if (_isAnnotationPaletteOpen || _isNoteEditorOpen || _isAnnotationManagerOpen) {
+                setState(() {
+                  _isAnnotationPaletteOpen = false;
+                  _isNoteEditorOpen = false;
+                  _isAnnotationManagerOpen = false;
+                });
               }
               _focusController.exitFocusMode();
               _focusController.setCompanionDrawerOpen(false);
@@ -679,15 +801,15 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                           final paraKey = _paraKeys.putIfAbsent(
                                               pId, () => GlobalKey(debugLabel: 'para_$pId'));
                                           final opacity = _focusController.getParagraphOpacity(pId);
-                                          // 选区级内联高亮（task_12 D5）：该段落全部区间标注
+                                          // 选区级内联标注（task_13）：全部内容样式按区间渲染
                                           final paragraphRanges = _annotations
-                                              .where((a) => a.paragraphId == pId && a.hasRange)
+                                              .where((a) =>
+                                                  a.paragraphId == pId && a.hasRange && !a.isNote)
                                               .map((a) => AnnotationRange(
                                                     start: a.startOffset!,
                                                     end: a.endOffset!,
-                                                    style: AnnotationStyle.highlight,
-                                                    color: annotationColorFromHex(a.colorHex)
-                                                        .withOpacity(0.35),
+                                                    style: a.style,
+                                                    color: annotationColorFromHex(a.colorHex),
                                                   ))
                                               .toList();
                                           final paragraphSpan = AnnotationSpanBuilder.build(
@@ -710,9 +832,16 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
-                                                  SelectableText.rich(
-                                                    paragraphSpan,
-                                                    onSelectionChanged: (selection, cause) {
+                                                  GestureDetector(
+                                                    // 点击标注区间 → 打开标注管理（task_13 D6）
+                                                    onTapUp: (details) =>
+                                                        _handleAnnotationTap(pId, details.globalPosition),
+                                                    child: SelectableText.rich(
+                                                      // 系统选择工具栏会叠在划词胶囊/标注面板上方互相遮挡
+                                                      //（task_13 D8），阅读段落禁用，复制走 Ctrl+C
+                                                      contextMenuBuilder: null,
+                                                      paragraphSpan,
+                                                      onSelectionChanged: (selection, cause) {
                                                       if (!selection.isCollapsed) {
                                                         final selectedStr = selection.textInside(text);
                                                         if (selectedStr.length >= 2) {
@@ -739,19 +868,26 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                         });
                                                       }
                                                     },
+                                                    ),
                                                   ),
-                                                  if (notes != null && notes.isNotEmpty)
+                                                  if (notes.isNotEmpty)
                                                     Padding(
                                                       padding: const EdgeInsets.only(top: 8.0),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(Icons.bookmark_border, size: 14.0, color: accentColor),
-                                                          const SizedBox(width: 4.0),
-                                                          Text(
-                                                            '${notes.length} 条已存边注',
-                                                            style: TextStyle(fontSize: 11.5, color: accentColor, fontWeight: FontWeight.w500),
-                                                          ),
-                                                        ],
+                                                      child: GestureDetector(
+                                                        onTap: () => setState(() {
+                                                          _selectionPosition = null;
+                                                          _isAnnotationManagerOpen = true;
+                                                        }),
+                                                        child: Row(
+                                                          children: [
+                                                            Icon(Icons.bookmark_border, size: 14.0, color: accentColor),
+                                                            const SizedBox(width: 4.0),
+                                                            Text(
+                                                              '${notes.length} 条批注',
+                                                              style: TextStyle(fontSize: 11.5, color: accentColor, fontWeight: FontWeight.w500),
+                                                            ),
+                                                          ],
+                                                        ),
                                                       ),
                                                     ),
                                                 ],
@@ -866,8 +1002,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           ),
                         ),
 
-                      // 划词快速伴读悬浮胶囊 (DESIGN.md §4.2: 5 按钮；锚定鼠标位置，点外部即收)
-                      if (_selectionPosition != null)
+                      // 划词快速伴读悬浮胶囊 (DESIGN.md §4.2；锚定鼠标位置，点外部即收)
+                      if (_selectionPosition != null && !_isAnnotationPaletteOpen)
                         Positioned(
                           top: _selectionPosition!.dy,
                           left: _selectionPosition!.dx,
@@ -878,6 +1014,17 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                               }
                             },
                             child: FloatingActionPill(
+                              onAnnotationPalette: () {
+                                // 打开标注面板：保留选区缓存，胶囊让位面板（同一锚点区域）
+                                setState(() {
+                                  _selectionPosition = _lastPointerGlobal != null
+                                      ? anchorPillAtPointer(
+                                          _lastPointerGlobal!, MediaQuery.of(context).size,
+                                          pillWidth: 372.0, pillHeight: 230.0)
+                                      : _selectionPosition;
+                                  _isAnnotationPaletteOpen = true;
+                                });
+                              },
                               onTemplateSelected: (tpl) {
                                 if (tpl == CognitiveTemplateType.highlight) {
                                   _handleHighlight();
@@ -887,6 +1034,77 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                   _triggerCompanion(pId, text, tpl);
                                 }
                               },
+                            ),
+                          ),
+                        ),
+
+                      // 标注面板（task_13 D3）：分类样式 + 调色板 + 批注入口
+                      if (_isAnnotationPaletteOpen)
+                        Positioned(
+                          top: _selectionPosition?.dy ?? 120.0,
+                          left: _selectionPosition?.dx ?? 120.0,
+                          child: AnnotationPalette(
+                            selectedColorHex: _activeAnnotationColor,
+                            onColorSelected: (hex) =>
+                                setState(() => _activeAnnotationColor = hex),
+                            onStyleSelected: (style, colorHex) =>
+                                _applyAnnotation(style, colorHex),
+                            onNoteRequested: () => setState(() {
+                              _isAnnotationPaletteOpen = false;
+                              _isNoteEditorOpen = true;
+                            }),
+                            onClose: () => setState(() {
+                              _isAnnotationPaletteOpen = false;
+                              if (_selectedTextCache != null && _lastPointerGlobal != null) {
+                                // 面板关闭回到胶囊（选区仍在）
+                                _selectionPosition = anchorPillAtPointer(
+                                    _lastPointerGlobal!, MediaQuery.of(context).size);
+                              } else {
+                                _clearSelection();
+                              }
+                            }),
+                          ),
+                        ),
+
+                      // 人工批注编辑浮层（task_13 D4）
+                      if (_isNoteEditorOpen)
+                        Positioned.fill(
+                          child: FrostedModal(
+                            width: 380.0,
+                            maxHeight: 320.0,
+                            onDismiss: () => setState(() {
+                              _isNoteEditorOpen = false;
+                              _clearSelection();
+                            }),
+                            child: NoteEditorPopover(
+                              onSave: _saveNote,
+                              onCancel: () => setState(() {
+                                _isNoteEditorOpen = false;
+                                _clearSelection();
+                              }),
+                            ),
+                          ),
+                        ),
+
+                      // 标注管理弹窗（task_13 D5）
+                      if (_isAnnotationManagerOpen)
+                        Positioned.fill(
+                          child: FrostedModal(
+                            width: 460.0,
+                            maxHeight: 620.0,
+                            onDismiss: () => setState(() => _isAnnotationManagerOpen = false),
+                            child: SizedBox(
+                              height: 560.0,
+                              child: AnnotationManagerModal(
+                                entries: _annotations
+                                    .where((a) => a.bookId == _currentBookId || a.bookId == 0)
+                                    .map((a) =>
+                                        AnnotationListEntry(item: a, excerpt: _excerptFor(a)))
+                                    .toList(),
+                                onDelete: _deleteAnnotation,
+                                onClose: () =>
+                                    setState(() => _isAnnotationManagerOpen = false),
+                              ),
                             ),
                           ),
                         ),

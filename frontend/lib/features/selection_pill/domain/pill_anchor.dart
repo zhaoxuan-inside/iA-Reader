@@ -3,7 +3,7 @@ import 'dart:ui' show Offset, Size;
 /// 划词胶囊锚定度量与纯函数（task_12 D1：胶囊跟随鼠标位置）。
 /// 纯函数无 BuildContext 依赖，便于单测与两端复用。
 class PillAnchorMetrics {
-  static const double pillWidth = 240.0;
+  static const double pillWidth = 300.0; // 6 按钮（含「标注」）后的胶囊宽度
   static const double pillHeight = 38.0;
   static const double margin = 16.0;
   static const double minTop = 56.0; // 顶栏 44px + 呼吸 12px

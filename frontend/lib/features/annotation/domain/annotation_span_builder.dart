@@ -20,7 +20,8 @@ class AnnotationRange {
 }
 
 /// 按 offset 区间把段落纯文本切分为带样式的 TextSpan 树（纯函数 seam）。
-/// task_12 渲染高亮 = 文本背景色内联，取代旧的整段 Container 背景。
+/// task_12/13：高亮=背景色内联；半高亮=粗底线模拟下半高亮；线条类=TextDecoration；
+/// 字型类=fontWeight/fontStyle。
 class AnnotationSpanBuilder {
   static TextSpan build({
     required String text,
@@ -48,7 +49,7 @@ class AnnotationSpanBuilder {
       }
       final segStart = start > cursor ? start : cursor;
       // 标注样式覆盖基础样式（baseStyle 可能 inherit=false，反向 merge 会整段丢弃标注样式）
-      final merged = baseStyle?.merge(_styleFor(r)) ?? _styleFor(r);
+      final merged = baseStyle?.merge(_styleFor(r, baseStyle)) ?? _styleFor(r, baseStyle);
       spans.add(TextSpan(
         text: text.substring(segStart, end),
         style: merged,
@@ -62,10 +63,41 @@ class AnnotationSpanBuilder {
     return TextSpan(children: spans, style: baseStyle);
   }
 
-  static TextStyle _styleFor(AnnotationRange r) {
+  static TextStyle _styleFor(AnnotationRange r, TextStyle? baseStyle) {
     switch (r.style) {
       case AnnotationStyle.highlight:
-        return TextStyle(backgroundColor: r.color);
+        return TextStyle(backgroundColor: r.color.withOpacity(0.35));
+      case AnnotationStyle.halfHighlight:
+        // TextSpan 无「下半背景」能力：粗底线（0.42em）模拟只高亮下半文字
+        final fontSize = baseStyle?.fontSize ?? 16.0;
+        return TextStyle(
+          decoration: TextDecoration.underline,
+          decorationColor: r.color.withOpacity(0.55),
+          decorationStyle: TextDecorationStyle.solid,
+          decorationThickness: fontSize * 0.42,
+        );
+      case AnnotationStyle.underline:
+        return TextStyle(
+          decoration: TextDecoration.underline,
+          decorationColor: r.color,
+          decorationStyle: TextDecorationStyle.solid,
+          decorationThickness: 1.5,
+        );
+      case AnnotationStyle.wavy:
+        return TextStyle(
+          decoration: TextDecoration.underline,
+          decorationColor: r.color,
+          decorationStyle: TextDecorationStyle.wavy,
+        );
+      case AnnotationStyle.strike:
+        return TextStyle(
+          decoration: TextDecoration.lineThrough,
+          decorationColor: r.color,
+        );
+      case AnnotationStyle.bold:
+        return const TextStyle(fontWeight: FontWeight.w700);
+      case AnnotationStyle.italic:
+        return const TextStyle(fontStyle: FontStyle.italic);
       case AnnotationStyle.marginNote:
       case AnnotationStyle.unknown:
         return const TextStyle();
