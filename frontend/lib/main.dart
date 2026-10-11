@@ -14,6 +14,8 @@ import 'features/annotation/domain/annotation_span_builder.dart';
 import 'features/annotation/presentation/annotation_palette.dart';
 import 'features/annotation/presentation/annotation_manager.dart';
 import 'features/annotation/presentation/note_editor_popover.dart';
+import 'features/ai_keyboard/presentation/ai_keyboard_panel.dart';
+import 'features/ai_keyboard/domain/ai_target_resolver.dart';
 import 'features/companion/presentation/companion_drawer.dart';
 import 'features/mobile_sheet/presentation/mobile_companion_sheet.dart';
 import 'features/toc_mindmap/presentation/toc_mindmap_drawer.dart';
@@ -163,6 +165,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   bool _isNoteEditorOpen = false;
   bool _isAnnotationManagerOpen = false;
   String _activeAnnotationColor = '#CA8A04';
+
+  // 独立 AI 键盘（task_14）：Cmd+K / 顶栏按钮唤起
+  bool _isAiKeyboardOpen = false;
 
   @override
   void initState() {
@@ -440,6 +445,35 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     return a.noteText ?? '';
   }
 
+  /// AI 键盘作用域提示（task_14 D2）
+  String get _aiTargetHint {
+    if (_selectedTextCache != null && _selectedTextCache!.trim().isNotEmpty) {
+      final t = _selectedTextCache!.trim();
+      return '作用域：选区「${t.length > 12 ? '${t.substring(0, 12)}…' : t}」';
+    }
+    if (_focusController.activeParagraphId != null) return '作用域：当前聚焦段落';
+    return '作用域：全文首段';
+  }
+
+  /// AI 键盘模板触发：作用域解析后走既有伴读链路（task_14 D3）
+  void _runAiKeyboardTemplate(CognitiveTemplateType tpl) {
+    final texts = {
+      for (final p in _paragraphs) p['id'] as String: p['text'] as String,
+    };
+    final target = resolveAiTarget(
+      selectionText: _selectedTextCache,
+      selectionParagraphId: _selectedParagraphIdCache,
+      activeParagraphId: _focusController.activeParagraphId,
+      paragraphTexts: texts,
+    );
+    setState(() => _isAiKeyboardOpen = false);
+    _triggerCompanion(
+      target.paragraphId ?? (_paragraphs.isNotEmpty ? _paragraphs.first['id'] as String : 'p1'),
+      target.text,
+      tpl,
+    );
+  }
+
   /// 点击正文命中标注区间 → 打开管理器（task_13 D6）
   void _handleAnnotationTap(String pId, Offset globalPosition) {
     for (final a in _annotations) {
@@ -561,6 +595,10 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
             const _ToggleTocIntent(),
         LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.backslash):
             const _ToggleTocIntent(),
+        LogicalKeySet(LogicalKeyboardKey.meta, LogicalKeyboardKey.keyK):
+            const _ToggleAiKeyboardIntent(),
+        LogicalKeySet(LogicalKeyboardKey.control, LogicalKeyboardKey.keyK):
+            const _ToggleAiKeyboardIntent(),
         LogicalKeySet(LogicalKeyboardKey.escape): const _ExitFocusIntent(),
         LogicalKeySet(LogicalKeyboardKey.keyJ): const _NextParagraphIntent(),
         LogicalKeySet(LogicalKeyboardKey.keyK): const _PrevParagraphIntent(),
@@ -578,16 +616,26 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
               return null;
             },
           ),
+          _ToggleAiKeyboardIntent: CallbackAction<_ToggleAiKeyboardIntent>(
+            onInvoke: (_) {
+              setState(() => _isAiKeyboardOpen = !_isAiKeyboardOpen);
+              return null;
+            },
+          ),
           _ExitFocusIntent: CallbackAction<_ExitFocusIntent>(
             onInvoke: (_) {
               if (_isTocOpen) {
                 setState(() => _isTocOpen = false);
               }
-              if (_isAnnotationPaletteOpen || _isNoteEditorOpen || _isAnnotationManagerOpen) {
+              if (_isAnnotationPaletteOpen ||
+                  _isNoteEditorOpen ||
+                  _isAnnotationManagerOpen ||
+                  _isAiKeyboardOpen) {
                 setState(() {
                   _isAnnotationPaletteOpen = false;
                   _isNoteEditorOpen = false;
                   _isAnnotationManagerOpen = false;
+                  _isAiKeyboardOpen = false;
                 });
               }
               _focusController.exitFocusMode();
@@ -731,6 +779,16 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                           onPressed: () {
                                             _focusController.setCompanionDrawerOpen(!_focusController.isCompanionDrawerOpen);
                                           },
+                                        ),
+                                        IconButton(
+                                          tooltip: 'AI 键盘 (Cmd+K)',
+                                          icon: Icon(
+                                            Icons.keyboard_alt_outlined,
+                                            size: 18.0,
+                                            color: _isAiKeyboardOpen ? accentColor : textSecondary,
+                                          ),
+                                          onPressed: () =>
+                                              setState(() => _isAiKeyboardOpen = !_isAiKeyboardOpen),
                                         ),
                                         const SizedBox(width: 4.0),
                                         WindowControls(color: textSecondary),
@@ -1109,6 +1167,25 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           ),
                         ),
 
+                      // 独立 AI 键盘（task_14）：底部停靠浮层
+                      if (isDesktop && _isAiKeyboardOpen)
+                        Positioned(
+                          bottom: 28.0,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: AiKeyboardPanel(
+                              targetHint: _aiTargetHint,
+                              onTemplateSelected: _runAiKeyboardTemplate,
+                              onOpenCompanion: () => setState(() {
+                                _isAiKeyboardOpen = false;
+                                _focusController.setCompanionDrawerOpen(true);
+                              }),
+                              onClose: () => setState(() => _isAiKeyboardOpen = false),
+                            ),
+                          ),
+                        ),
+
                       // 移动端伴读 Bottom Sheet (DESIGN.md §5: 半屏拖拽滑层)
                       if (!isDesktop && _focusController.isCompanionDrawerOpen)
                         MobileCompanionSheet(
@@ -1164,6 +1241,10 @@ class _ToggleFocusIntent extends Intent {
 
 class _ToggleTocIntent extends Intent {
   const _ToggleTocIntent();
+}
+
+class _ToggleAiKeyboardIntent extends Intent {
+  const _ToggleAiKeyboardIntent();
 }
 
 class _ExitFocusIntent extends Intent {

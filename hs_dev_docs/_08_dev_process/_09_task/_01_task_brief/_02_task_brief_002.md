@@ -24,3 +24,15 @@
 - **更新时间**：`2026-10-11T10:00:03Z`
 ---
 
+### 任务简述：task_14_ai_keyboard
+- **标题**：独立 AI 键盘面板：分类模板/伴读入口/作用域提示，Cmd+K 唤起
+- **change_size**：`M`
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：独立 AI 键盘面板：分类模板/伴读入口/作用域提示，Cmd+K 唤起
+- **详情索引**：`_02_task_detail/_01_task_14_ai_keyboard/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_14_ai_keyboard/_00_context_pack.md`
+- **更新时间**：`2026-10-11T10:04:13Z`
+---
+
