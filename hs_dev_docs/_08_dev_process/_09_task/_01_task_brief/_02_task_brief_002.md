@@ -36,3 +36,15 @@
 - **更新时间**：`2026-10-11T10:04:13Z`
 ---
 
+### 任务简述：task_15_mindmap_wordcloud
+- **标题**：图形化知识导图画布（树布局/贝塞尔连线/缩放点选）+ 权重词云
+- **change_size**：`M`
+- **状态**：`COMPLETED`
+- **优先级**：P1
+- **负责人**：agent
+- **核心目标**：图形化知识导图画布（树布局/贝塞尔连线/缩放点选）+ 权重词云
+- **详情索引**：`_02_task_detail/_01_task_15_mindmap_wordcloud/_00_task_detail.md`
+- **上下文包**：`_03_task_context_pack/_01_task_15_mindmap_wordcloud/_00_context_pack.md`
+- **更新时间**：`2026-10-11T10:09:55Z`
+---
+

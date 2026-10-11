@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/reader_theme.dart';
+import 'mindmap_canvas.dart';
+import 'word_cloud.dart';
 
 /// 章节信息结构
 class TocSectionItem {
@@ -46,7 +48,7 @@ class KeywordTagItem {
 /// 严格对标 iA Writer 设计哲学：
 /// 1. 彻底移除书库切换、文件导入等文件系统管理杂项；
 /// 2. 仅作为“当前文章的导航罗盘”；
-/// 3. 提供极简 260px 宽度、轻量双 Tab（章节 AST / 导图与词云），阅毕即退。
+/// 3. 三 Tab：章节目录 / 图形化知识导图（task_15）/ 权重词云，阅毕即退。
 class TocMindmapDrawer extends StatefulWidget {
   final List<TocSectionItem> sections;
   final List<MindmapNodeItem> mindmapNodes;
@@ -54,6 +56,7 @@ class TocMindmapDrawer extends StatefulWidget {
   final int activeSectionId;
   final Function(TocSectionItem section) onSectionSelected;
   final Function(String keyword) onKeywordSelected;
+  final ValueChanged<String>? onNodeSelected;
   final VoidCallback? onClose;
 
   const TocMindmapDrawer({
@@ -64,6 +67,7 @@ class TocMindmapDrawer extends StatefulWidget {
     required this.activeSectionId,
     required this.onSectionSelected,
     required this.onKeywordSelected,
+    this.onNodeSelected,
     this.onClose,
   }) : super(key: key);
 
@@ -78,7 +82,7 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -144,8 +148,9 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
           labelStyle:
               const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w600),
           tabs: const [
-            Tab(text: '章节 AST 目录'),
-            Tab(text: '知识导图 & 词云'),
+            Tab(text: '章节目录'),
+            Tab(text: '知识导图'),
+            Tab(text: '词云'),
           ],
         ),
 
@@ -198,12 +203,21 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                 },
               ),
 
-              // Tab 2: 知识导图与全书核心词
+              // Tab 2: 图形化知识导图（task_15：tidy tree 画布 + 缩放平移 + 点选）
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: MindmapCanvas(
+                  nodes: widget.mindmapNodes,
+                  onNodeSelected: (label) => widget.onNodeSelected?.call(label),
+                ),
+              ),
+
+              // Tab 3: 权重词云（task_15：字号/强度随 score）
               ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
                   Text(
-                    '核心概念词云',
+                    '全书核心概念',
                     style: TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w600,
@@ -211,83 +225,11 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                       letterSpacing: 0.5,
                     ),
                   ),
-                  const SizedBox(height: 10.0),
-                  Wrap(
-                    spacing: 6.0,
-                    runSpacing: 6.0,
-                    children: widget.keywords.map((kw) {
-                      return InkWell(
-                        onTap: () => widget.onKeywordSelected(kw.word),
-                        borderRadius: BorderRadius.circular(12.0),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0, vertical: 3.5),
-                          decoration: BoxDecoration(
-                            color: isDark
-                                ? const Color(0xFF27272A)
-                                : const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(12.0),
-                            border: Border.all(color: borderColor, width: 0.5),
-                          ),
-                          child: Text(
-                            '#${kw.word}',
-                            style: TextStyle(
-                              fontSize: 11.0,
-                              color:
-                                  kw.score > 0.8 ? accentColor : textSecondary,
-                              fontWeight: kw.score > 0.8
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                  const SizedBox(height: 12.0),
+                  WordCloud(
+                    keywords: widget.keywords,
+                    onKeywordSelected: widget.onKeywordSelected,
                   ),
-                  const SizedBox(height: 20.0),
-                  Text(
-                    '结构化知识树 (Mindmap AST)',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w600,
-                      color: textSecondary,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 10.0),
-                  ...widget.mindmapNodes.map((node) {
-                    final indent = node.depth * 14.0;
-                    return Padding(
-                      padding: EdgeInsets.only(left: indent, bottom: 8.0),
-                      child: Row(
-                        children: [
-                          Icon(
-                            node.depth == 0
-                                ? Icons.lens
-                                : (node.depth == 1
-                                    ? Icons.subdirectory_arrow_right
-                                    : Icons.circle_outlined),
-                            size: node.depth == 0 ? 7.0 : 11.0,
-                            color:
-                                node.depth == 0 ? accentColor : textSecondary,
-                          ),
-                          const SizedBox(width: 6.0),
-                          Expanded(
-                            child: Text(
-                              node.label,
-                              style: TextStyle(
-                                fontSize: 12.0,
-                                fontWeight: node.depth == 0
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                color: textPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
                 ],
               ),
             ],

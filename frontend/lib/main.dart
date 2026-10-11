@@ -987,6 +987,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     SnackBar(content: Text('已锚定核心概念：#$kw'), duration: const Duration(milliseconds: 1200)),
                                   );
                                 },
+                                onNodeSelected: (label) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('已定位知识节点：$label'), duration: const Duration(milliseconds: 1200)),
+                                  );
+                                },
                               ),
                             ),
                           ),
