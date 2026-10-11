@@ -2,14 +2,15 @@
 // 六元组标准化业务服务层 (主方法 + compensate + fallback + metrics + recall)
 
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 use crate::domain::*;
 use crate::storage::SqliteStorage;
 use crate::parser::*;
 use crate::nlp::*;
 use crate::llm::{
-    build_companion_messages, chat_with_retry, LlmClient, LlmConfig, UreqLlmClient, BASE_DELAY_MS,
-    MAX_RETRIES,
+    build_companion_messages, chat_with_retry, chat_with_retry_stream, LlmClient, LlmConfig,
+    UreqLlmClient, BASE_DELAY_MS, MAX_RETRIES,
 };
 
 pub struct ReaderService {
@@ -443,21 +444,10 @@ impl ReaderService {
         crate::log_warn!("[COMPENSATE] Cleaned up interrupted AI session for book_id: {}", book_id);
     }
 
-    /// 离线确定性启发卡片（PRD §4.1）：未配置 api_key 或 LLM 重试耗尽时的降级路径，
-    /// 按模板给出确定性思考支架，全部带离线标识，不产生任何网络调用。
+    /// 离线确定性启发卡片（PRD §4.1）：未配置 api_key 或 LLM 重试耗尽时的降级路径。
     pub fn ai_companion_stream_fallback(&self, template_type: &str, selected_text: &str) -> Result<String, String> {
         crate::log_warn!("[FALLBACK] Offline heuristic template fallback for type: {}", template_type);
-        let heuristic = match template_type {
-            "general" => format!("【通俗解读】\n关于「{}」：可尝试将其比作熟悉的生活场景或模块化积木，先抓住主旨，再拆解支撑主旨的关键要点。", selected_text),
-            "logic" => format!("【逻辑链剖析】\n1. 论点前提：作者在段落「{}」中确立了哪些前置假设？\n2. 推导过程：论据到结论之间是否存在跳跃？\n3. 核心结论：论证结构是否闭合、有无未覆盖的反例。", selected_text),
-            "critical" => format!("【批判性辩驳】\n反向视角审视「{}」：该论述可能忽略了边界约束条件，在极端或非理想环境下是否存在失效风险？", selected_text),
-            "term" => format!("【术语卡拆解】\n- 核心术语：{}\n- 定义：尝试用自己的语言概括其内涵与外延；\n- 衍生应用：它与本文知识导图中的相邻概念如何关联？", selected_text),
-            _ => format!("【离线启发】\n针对选区「{}」，建议思考：\n1. 作者提出该论点的核心背景是什么？\n2. 有哪些反例能够推翻该结论？", selected_text),
-        };
-        Ok(format!(
-            "【离线模式】当前未连接 LLM 服务（未配置 api_key 或网络不可用），以下为本地启发卡片。\n\n{}",
-            heuristic
-        ))
+        Ok(companion_offline_text(template_type, selected_text))
     }
 
     pub fn ai_companion_stream_metrics(&self, latency_ms: f64, turns: usize) {
@@ -466,6 +456,236 @@ impl ReaderService {
 
     pub fn ai_companion_stream_recall(&self, book_id: i64) {
         crate::log_info!("[RECALL] ai companion session completed for book_id: {}", book_id);
+    }
+}
+
+
+/// 离线确定性启发卡片正文（task_17 D2 自由函数化：流式派生线程不持有 ReaderService 也能产出降级卡）
+pub fn companion_offline_text(template_type: &str, selected_text: &str) -> String {
+    let heuristic = match template_type {
+        "general" => format!("【通俗解读】\n关于「{}」：可尝试将其比作熟悉的生活场景或模块化积木，先抓住主旨，再拆解支撑主旨的关键要点。", selected_text),
+        "logic" => format!("【逻辑链剖析】\n1. 论点前提：作者在段落「{}」中确立了哪些前置假设？\n2. 推导过程：论据到结论之间是否存在跳跃？\n3. 核心结论：论证结构是否闭合、有无未覆盖的反例。", selected_text),
+        "critical" => format!("【批判性辩驳】\n反向视角审视「{}」：该论述可能忽略了边界约束条件，在极端或非理想环境下是否存在失效风险？", selected_text),
+        "term" => format!("【术语卡拆解】\n- 核心术语：{}\n- 定义：尝试用自己的语言概括其内涵与外延；\n- 衍生应用：它与本文知识导图中的相邻概念如何关联？", selected_text),
+        _ => format!("【离线启发】\n针对选区「{}」，建议思考：\n1. 作者提出该论点的核心背景是什么？\n2. 有哪些反例能够推翻该结论？", selected_text),
+    };
+    format!(
+        "【离线模式】当前未连接 LLM 服务（未配置 api_key 或网络不可用），以下为本地启发卡片。\n\n{}",
+        heuristic
+    )
+}
+
+// =========================================================================
+// 7. 流式伴读注册表（task_17 D2）：start/poll 免锁管线
+// =========================================================================
+// 派生线程执行 LLM 流式调用并持久化，全程不占用 SERVICE Mutex；
+// poll 只读注册表快照，前端 260ms 轮询渐进渲染（TTFT ≈ 首 delta 到达时延）。
+
+#[derive(Debug, Clone, Default)]
+pub struct CompanionStreamState {
+    pub partial: String,
+    pub done: bool,
+    pub offline: bool,
+}
+
+static COMPANION_STREAMS: OnceLock<Mutex<HashMap<String, Arc<Mutex<CompanionStreamState>>>>> =
+    OnceLock::new();
+
+fn companion_streams() -> &'static Mutex<HashMap<String, Arc<Mutex<CompanionStreamState>>>> {
+    COMPANION_STREAMS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 启动一次流式伴读：立即返回 request_id，LLM 调用/重试/持久化全部在派生线程完成。
+/// client 以参数注入（生产传 UreqLlmClient，测试传 Mock），storage 句柄为 Arc 内核克隆。
+pub fn companion_start(
+    client: Box<dyn LlmClient + Send>,
+    storage: SqliteStorage,
+    config: LlmConfig,
+    book_id: i64,
+    template_type: String,
+    selected_text: String,
+    prompt: String,
+) -> String {
+    let start = Instant::now();
+    let request_id = format!(
+        "cs_{}_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos(),
+        book_id
+    );
+
+    let state = Arc::new(Mutex::new(CompanionStreamState::default()));
+    companion_streams()
+        .lock()
+        .unwrap()
+        .insert(request_id.clone(), Arc::clone(&state));
+
+    let state_for_thread = Arc::clone(&state);
+    std::thread::spawn(move || {
+        let messages = build_companion_messages(
+            &template_type,
+            &selected_text,
+            &prompt,
+            &config.system_prompt,
+        );
+
+        let (response, offline) = if config.api_key.trim().is_empty() {
+            crate::log_warn!("[FALLBACK] api_key 未配置，流式伴读走离线启发卡片");
+            (companion_offline_text(&template_type, &selected_text), true)
+        } else {
+            let state_for_delta = Arc::clone(&state_for_thread);
+            let mut on_delta = |delta: &str| {
+                state_for_delta.lock().unwrap().partial.push_str(delta);
+            };
+            match chat_with_retry_stream(
+                client.as_ref(),
+                &config,
+                &messages,
+                MAX_RETRIES,
+                BASE_DELAY_MS,
+                |d| std::thread::sleep(d),
+                &mut on_delta,
+            ) {
+                Ok(content) => (content, false),
+                Err(err) => {
+                    crate::log_warn!(
+                        "[FALLBACK] 流式 LLM 调用重试 {} 次后耗尽: {}，走离线启发卡片",
+                        MAX_RETRIES,
+                        err
+                    );
+                    (companion_offline_text(&template_type, &selected_text), true)
+                }
+            }
+        };
+
+        // 持久化（失败不阻断：会话是伴读的附属沉淀）
+        let latency_ms = start.elapsed().as_secs_f64() * 1000.0;
+        let conv = AiConversation {
+            id: 0,
+            created_at: String::new(),
+            updated_at: String::new(),
+            description: if offline { Some("offline_fallback".to_string()) } else { None },
+            is_del: 0,
+            version: 1,
+            book_id,
+            section_id: None,
+            template_type: template_type.clone(),
+            prompt: prompt.clone(),
+            response: response.clone(),
+            latency_ms,
+        };
+        if let Err(e) = storage.save_ai_conversation(&conv) {
+            crate::log_error!("[ERROR] AI 会话持久化失败: {}", e);
+        }
+        crate::log_info!("[METRICS] companion_stream latency: {:.2}ms (turns: 1)", latency_ms);
+
+        // 终态覆盖（partial 全文为权威，见 chat_with_retry_stream 注释）
+        let mut st = state_for_thread.lock().unwrap();
+        st.partial = response;
+        st.done = true;
+        st.offline = offline;
+    });
+
+    request_id
+}
+
+/// 轮询流式伴读状态：未知 id 返回 None；done 后条目保留（重复 poll 稳定返回终态）。
+pub fn companion_poll(request_id: &str) -> Option<CompanionStreamState> {
+    let state = {
+        let registry = companion_streams().lock().unwrap();
+        let state = registry.get(request_id)?.clone();
+        state
+    };
+    let snapshot = state.lock().unwrap().clone();
+    Some(snapshot)
+}
+
+#[cfg(test)]
+mod companion_stream_tests {
+    use super::*;
+    use crate::llm::tests::MockLlmClient;
+    use serde_json::json;
+    use std::time::Duration;
+
+    fn temp_db(tag: &str) -> String {
+        let path = std::env::temp_dir().join(format!(
+            "ai_reader_stream_test_{}_{}.db",
+            tag,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        path.to_string_lossy().to_string()
+    }
+
+    fn test_config(api_key: &str) -> LlmConfig {
+        serde_json::from_value(json!({
+            "endpoint": "https://api.example.com/v1",
+            "api_key": api_key,
+            "model_name": "test-model",
+            "system_prompt": "测试人设"
+        }))
+        .unwrap()
+    }
+
+    fn poll_until_done(request_id: &str, max_ms: u64) -> Option<CompanionStreamState> {
+        let deadline = std::time::Instant::now() + Duration::from_millis(max_ms);
+        loop {
+            if let Some(state) = companion_poll(request_id) {
+                if state.done {
+                    return Some(state);
+                }
+            }
+            if std::time::Instant::now() > deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn companion_stream_offline_path_done_with_prefix() {
+        let storage = SqliteStorage::init_db(&temp_db("offline")).unwrap();
+        let request_id = companion_start(
+            Box::new(MockLlmClient::new(vec![Ok("不应被调用".to_string())])),
+            storage,
+            test_config(""), // api_key 空 → 离线
+            1,
+            "general".to_string(),
+            "选区文本".to_string(),
+            String::new(),
+        );
+        let state = poll_until_done(&request_id, 3000).expect("应在超时前完成");
+        assert!(state.offline);
+        assert!(state.partial.starts_with("【离线模式】"));
+        // 重复 poll 稳定返回终态
+        let again = companion_poll(&request_id).unwrap();
+        assert!(again.done && again.offline);
+    }
+
+    #[test]
+    fn companion_stream_mock_client_done_with_full_text() {
+        let storage = SqliteStorage::init_db(&temp_db("mock")).unwrap();
+        let request_id = companion_start(
+            Box::new(MockLlmClient::new(vec![Ok("流式全文内容".to_string())])),
+            storage,
+            test_config("sk-test"), // 有 key → 走（默认非流式降级的）chat_stream
+            1,
+            "logic".to_string(),
+            "选区文本".to_string(),
+            String::new(),
+        );
+        let state = poll_until_done(&request_id, 3000).expect("应在超时前完成");
+        assert!(!state.offline);
+        assert_eq!(state.partial, "流式全文内容");
+    }
+
+    #[test]
+    fn companion_poll_unknown_id_returns_none() {
+        assert!(companion_poll("cs_no_such").is_none());
     }
 }
 

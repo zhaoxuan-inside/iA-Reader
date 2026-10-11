@@ -306,17 +306,46 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     _focusController.focusParagraph(paragraphId, selectedText: text);
     _focusController.setCompanionDrawerOpen(true);
 
-    final res = await widget.bridge.invoke('ai.companion_ask', {
+    // 流式伴读（task_17 D4）：start 拿 request_id，260ms 轮询渐进渲染，done 落终态
+    final startRes = await widget.bridge.invoke('ai.companion_start', {
       'book_id': _currentBookId,
       'template_type': template.templateKey,
       'selected_text': text,
     });
+    final requestId = startRes.data['request_id']?.toString() ?? '';
+
+    var finalText = '解析完成';
+    if (requestId.isNotEmpty) {
+      // 上限 900 次 ≈ 4 分钟，超时以最后一次 partial 收敛
+      for (var i = 0; i < 900; i++) {
+        final poll = await widget.bridge.invoke('ai.companion_poll', {
+          'request_id': requestId,
+        });
+        final partial = (poll.data['partial'] ?? '') as String;
+        final done = poll.data['done'] == true;
+        if (mounted && partial.isNotEmpty) {
+          setState(() => _activeAnalysisText = partial);
+        }
+        if (done) {
+          finalText = partial;
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 260));
+      }
+    } else {
+      // 兜底：旧阻塞契约（engine 未升级时）
+      final res = await widget.bridge.invoke('ai.companion_ask', {
+        'book_id': _currentBookId,
+        'template_type': template.templateKey,
+        'selected_text': text,
+      });
+      finalText = (res.data['response'] ?? res.data['analysis'] ?? '解析完成') as String;
+    }
 
     if (mounted) {
       setState(() {
-        final respText = (res.data['response'] ?? res.data['analysis'] ?? '解析完成') as String;
-        _activeAnalysisText = respText;
-        _companionOffline = respText.startsWith('【离线模式】');
+        _activeAnalysisText = finalText;
+        _companionOffline = finalText.startsWith('【离线模式】');
       });
     }
   }

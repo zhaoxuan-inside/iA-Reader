@@ -1,3 +1,2 @@
 {"version": "1.0", "category": "task_active", "root": "_09_task"}
-{"id": "task_17_concurrent_stream", "title": "清零遗留②：FFI 并发治理（LLM 不占全局锁）+ 流式伴读 companion_start/poll + 前端渐进渲染", "path": "_02_task_detail/_01_task_17_concurrent_stream/_00_task_detail.md", "status": "READY", "digest": "0213b075"}
-{"id": "task_18_deb_metadata", "title": "清零遗留③：deb 打包元数据修正（Depends/Description 对齐 Flutter 桌面应用）", "path": "_02_task_detail/_01_task_18_deb_metadata/_00_task_detail.md", "status": "READY", "digest": "1183480c"}
+{"id": "task_18_deb_metadata", "title": "清零遗留③：deb 打包元数据修正（Depends/Description 对齐 Flutter 桌面应用）", "path": "_02_task_detail/_01_task_18_deb_metadata/_00_task_detail.md", "status": "READY", "digest": "633321ed"}

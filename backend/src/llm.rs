@@ -10,6 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
+use std::io::BufRead;
 use std::time::Duration;
 
 /// 重试次数上限（含首次调用），对齐 PRD §4.1「指数退避重试（最多 3 次）」
@@ -69,6 +70,19 @@ pub struct ChatMessage {
 /// `Send` 约束：ReaderService 存放于静态 Mutex 中，跨线程共享要求传输层可移动。
 pub trait LlmClient: Send {
     fn chat(&self, config: &LlmConfig, messages: &[ChatMessage]) -> Result<String, String>;
+
+    /// 流式生成（task_17 D1）：on_delta 逐段回调，返回完整文本。
+    /// 默认实现降级为一次性整段回调——既有 Mock/测试零改动即可接入流式管线。
+    fn chat_stream(
+        &self,
+        config: &LlmConfig,
+        messages: &[ChatMessage],
+        on_delta: &mut dyn FnMut(&str),
+    ) -> Result<String, String> {
+        let content = self.chat(config, messages)?;
+        on_delta(&content);
+        Ok(content)
+    }
 }
 
 impl LlmConfig {
@@ -164,6 +178,36 @@ where
     }
 }
 
+/// 流式重试包装（task_17 D1）：重试语义与 chat_with_retry 一致。
+/// 注意：某次尝试中途失败时已推送的 delta 不可撤回，下一次成功尝试的增量会继续追加；
+/// 终态以返回全文（落库与 poll 终值）为权威覆盖，短暂重复由终态收敛。
+pub fn chat_with_retry_stream<S>(
+    client: &dyn LlmClient,
+    config: &LlmConfig,
+    messages: &[ChatMessage],
+    max_retries: u32,
+    base_delay_ms: u64,
+    sleep: S,
+    on_delta: &mut dyn FnMut(&str),
+) -> Result<String, String>
+where
+    S: Fn(Duration),
+{
+    let mut attempt: u32 = 0;
+    loop {
+        match client.chat_stream(config, messages, on_delta) {
+            Ok(content) => return Ok(content),
+            Err(err) => {
+                attempt += 1;
+                if attempt >= max_retries.max(1) {
+                    return Err(err);
+                }
+                sleep(Duration::from_millis(base_delay_ms << (attempt - 1)));
+            }
+        }
+    }
+}
+
 /// 生产传输层：OpenAI 兼容 `POST {endpoint}/chat/completions`（deepseek 等均兼容）。
 pub struct UreqLlmClient;
 
@@ -205,6 +249,68 @@ impl LlmClient for UreqLlmClient {
             .map(|s| s.to_string())
             .ok_or_else(|| format!("LLM response missing choices[0].message.content: {}", value))
     }
+
+    /// SSE 流式（task_17 D1）：OpenAI 兼容 `data:` 帧 + `[DONE]` 终止。
+    fn chat_stream(
+        &self,
+        config: &LlmConfig,
+        messages: &[ChatMessage],
+        on_delta: &mut dyn FnMut(&str),
+    ) -> Result<String, String> {
+        if config.api_key.trim().is_empty() {
+            return Err("LLM api_key 未配置".to_string());
+        }
+        let url = format!("{}/chat/completions", config.endpoint.trim_end_matches('/'));
+        let body = json!({
+            "model": config.model_name,
+            "messages": messages
+                .iter()
+                .map(|m| json!({ "role": m.role, "content": m.content }))
+                .collect::<Vec<_>>(),
+            "temperature": config.temperature,
+            "max_tokens": config.max_output_tokens,
+            "stream": true,
+        });
+
+        let resp = ureq::post(&url)
+            .set("Authorization", &format!("Bearer {}", config.api_key.trim()))
+            .timeout(Duration::from_secs(CHAT_TIMEOUT_SECS))
+            .send_json(body)
+            .map_err(|e| format!("LLM stream request failed: {}", e))?;
+
+        let reader = resp.into_reader();
+        let mut full = String::new();
+        for line in std::io::BufReader::new(reader).lines() {
+            let line = line.map_err(|e| format!("LLM stream read failed: {}", e))?;
+            if let Some(delta) = parse_sse_delta_line(&line) {
+                if !delta.is_empty() {
+                    on_delta(&delta);
+                    full.push_str(&delta);
+                }
+            }
+        }
+        if full.is_empty() {
+            return Err("LLM stream produced no content".to_string());
+        }
+        Ok(full)
+    }
+}
+
+/// SSE 帧行解析（task_17 D1 纯函数）：`data: {...}` → `choices[0].delta.content`；
+/// `data: [DONE]` 与空行/注释行返回 None。
+fn parse_sse_delta_line(line: &str) -> Option<String> {
+    let payload = line.strip_prefix("data:")?.trim();
+    if payload.is_empty() || payload == "[DONE]" {
+        return None;
+    }
+    let value: Value = serde_json::from_str(payload).ok()?;
+    value
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("delta"))
+        .and_then(|d| d.get("content"))
+        .and_then(|c| c.as_str())
+        .map(|s| s.to_string())
 }
 
 // =========================================================================
@@ -267,6 +373,18 @@ pub fn test_llm_connection(client: &dyn LlmClient, config: &LlmConfig) -> Result
 
 #[cfg(test)]
 pub mod tests {
+    #[test]
+    fn parse_sse_delta_line_cases() {
+        assert_eq!(
+            parse_sse_delta_line("data: {\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}"),
+            Some("你好".to_string())
+        );
+        assert_eq!(parse_sse_delta_line("data: [DONE]"), None);
+        assert_eq!(parse_sse_delta_line("data: "), None);
+        assert_eq!(parse_sse_delta_line(": keep-alive"), None);
+        assert_eq!(parse_sse_delta_line("data: not-json"), None);
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;

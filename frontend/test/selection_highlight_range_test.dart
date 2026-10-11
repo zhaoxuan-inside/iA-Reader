@@ -129,4 +129,29 @@ void main() {
     });
     expect(miss.data['status'], 'not_found');
   });
+
+  testWidgets('流式伴读 mock：start 即 done，poll 稳定返回终态（task_17）', (tester) async {
+    final bridge = ReaderEngineBridge();
+    final startRes = await bridge.invoke('ai.companion_start', {
+      'book_id': 1,
+      'template_type': 'general',
+      'selected_text': '预写式日志',
+    });
+    expect(startRes.isSuccess, isTrue);
+    final requestId = startRes.data['request_id'] as String?;
+    expect(requestId, isNotNull);
+    expect(requestId!, isNotEmpty);
+
+    final poll = await bridge.invoke('ai.companion_poll', {'request_id': requestId});
+    expect(poll.isSuccess, isTrue);
+    expect(poll.data['done'], isTrue);
+    expect((poll.data['partial'] as String), contains('通俗解读'));
+    // 重复 poll 稳定
+    final poll2 = await bridge.invoke('ai.companion_poll', {'request_id': requestId});
+    expect(poll2.data['done'], isTrue);
+
+    // 未知 id 报错
+    final miss = await bridge.invoke('ai.companion_poll', {'request_id': 'no_such'});
+    expect(miss.isSuccess, isFalse);
+  });
 }

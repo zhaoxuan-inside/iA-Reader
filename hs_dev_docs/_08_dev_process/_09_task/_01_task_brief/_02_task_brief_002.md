@@ -63,13 +63,13 @@
 ### 任务简述：task_17_concurrent_stream
 - **标题**：清零遗留②：FFI 并发治理（LLM 不占全局锁）+ 流式伴读 companion_start/poll + 前端渐进渲染
 - **change_size**：`M`
-- **状态**：`READY`
+- **状态**：`COMPLETED`
 - **优先级**：P1
 - **负责人**：agent
 - **核心目标**：清零遗留②：FFI 并发治理（LLM 不占全局锁）+ 流式伴读 companion_start/poll + 前端渐进渲染
 - **详情索引**：`_02_task_detail/_01_task_17_concurrent_stream/_00_task_detail.md`
 - **上下文包**：`_03_task_context_pack/_01_task_17_concurrent_stream/_00_context_pack.md`
-- **更新时间**：`2026-10-11T10:18:23Z`
+- **更新时间**：`2026-10-11T10:42:53Z`
 ---
 
 ### 任务简述：task_18_deb_metadata

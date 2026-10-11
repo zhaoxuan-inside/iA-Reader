@@ -81,11 +81,15 @@ class ReaderEngineBridge {
   // 内存中模拟存储（用于离线开发或无动态库环境测试）
   final List<Map<String, dynamic>> _inMemoryAnnotations = [];
 
+  // 流式伴读注册表 mock（task_17 D4）：start 即 done 的确定性快照
+  final Map<String, Map<String, dynamic>> _inMemoryStreams = {};
+
   /// 清空进程内 mock 状态（@visibleForTesting）：桥接为单例工厂，
   /// 内存标注跨同一进程内的用例共享，各 e2e harness pump 前调用以保证用例隔离。
   @visibleForTesting
   void resetMockStateForTest() {
     _inMemoryAnnotations.clear();
+    _inMemoryStreams.clear();
   }
 
   ReaderEngineBridge._({String? libraryPath}) : _libraryPath = libraryPath;
@@ -177,48 +181,94 @@ class ReaderEngineBridge {
     return _mockFallback(action, payload);
   }
 
+  /// mock 确定性分析生成（ask 与流式 start 共用）
+  String _mockAnalysis(String tpl, String text, String prompt) {
+    if (prompt.isNotEmpty) {
+      return '针对追问「$prompt」：\n\n'
+          '从底层架构视角分析，当前段落所讨论的核心机制在发生高并发竞争时，'
+          '主要依赖快照隔离与写前日志机制消除锁冲突。长事务会推迟资源截断，'
+          '建议结合自适应调度器平衡吞吐与延迟。';
+    }
+    switch (tpl) {
+      case 'logic':
+        return '【逻辑链条推理】针对选区：“$text”\n\n'
+            '1. 前置假设：所有写事务必须在主库落盘前先行写入持久层日志。\n'
+            '2. 因果传导：顺序日志追加极大消除了随机寻道耗时，解耦读写锁。\n'
+            '3. 潜在隐患：检查点滞后将引发日志膨胀，需配置动态截断。';
+      case 'critical':
+        return '【批判性审视】针对选区：“$text”\n\n'
+            '1. 边界局限：无锁读快照在极端内存受限场景下可能带来快照膨胀。\n'
+            '2. 权衡取舍：该方案用存储空间换取并发读性能，并非万能银弹。\n'
+            '3. 改进空间：引入冷热数据分层可进一步规避大快照抖动。';
+      case 'term':
+        return '【核心术语剖析】针对选区：“$text”\n\n'
+            '• WAL (Write-Ahead Logging)：预写式日志，用于保证 ACID 中的原子性与持久性。\n'
+            '• MVCC (多版本并发控制)：通过维护数据多版本快照实现读写互不阻塞。\n'
+            '• 检查点 (Checkpoint)：将 WAL 日志中已提交事务合并回主数据库并截断日志。';
+      case 'general':
+      default:
+        return '【通俗解读】针对选区：“$text”\n\n'
+            '简单来说，就像食堂打饭：以前是打菜师傅和盛饭师傅抢同一个勺子，'
+            '现在分成两条独立传送带，谁也不用等谁，大大提升了整体效率。';
+    }
+  }
+
+  /// mock 流式伴读（task_17 D4）：start 即生成完整分析并标记 done（确定性，测试零等待）；
+  /// poll 读取快照（done 后重复 poll 稳定）。
+  InvokeEnvelope _mockCompanionStream(
+      String action, Map<String, dynamic> payload, int now) {
+    if (action == 'ai.companion_poll') {
+      final requestId = payload['request_id']?.toString() ?? '';
+      final state = _inMemoryStreams[requestId];
+      if (state == null) {
+        return InvokeEnvelope(
+          code: 50001,
+          message: 'unknown companion stream: $requestId',
+          data: {},
+          metrics: {'duration_ms': 1, 'timestamp': now},
+        );
+      }
+      return InvokeEnvelope(
+        code: 0,
+        message: 'success',
+        data: {
+          'partial': state['partial'],
+          'done': state['done'],
+          'offline': state['offline'],
+        },
+        metrics: {'duration_ms': 1, 'timestamp': now},
+      );
+    }
+
+    final tpl = payload['template_type'] ?? payload['template'] ?? 'general';
+    final text = payload['selected_text'] ?? '';
+    final analysis = _mockAnalysis(tpl.toString(), text.toString(), '');
+    final requestId = 'mock_stream_${now}_${_inMemoryStreams.length + 1}';
+    _inMemoryStreams[requestId] = {
+      'partial': analysis,
+      'done': true,
+      'offline': analysis.startsWith('【离线模式】'),
+    };
+    return InvokeEnvelope(
+      code: 0,
+      message: 'Started',
+      data: {'request_id': requestId},
+      metrics: {'duration_ms': 2, 'timestamp': now},
+    );
+  }
+
   InvokeEnvelope _mockFallback(String action, Map<String, dynamic> payload) {
     final now = DateTime.now().millisecondsSinceEpoch;
+
+    if (action == 'ai.companion_start' || action == 'ai.companion_poll') {
+      return _mockCompanionStream(action, payload, now);
+    }
 
     if (action == 'ai.companion_ask') {
       final tpl = payload['template_type'] ?? payload['template'] ?? 'general';
       final text = payload['selected_text'] ?? '';
       final prompt = payload['prompt'] ?? payload['follow_up'] ?? '';
-
-      String analysis = '';
-      if (prompt.toString().isNotEmpty) {
-        analysis = '针对追问「$prompt」：\n\n'
-            '从底层架构视角分析，当前段落所讨论的核心机制在发生高并发竞争时，'
-            '主要依赖快照隔离与写前日志机制消除锁冲突。长事务会推迟资源截断，'
-            '建议结合自适应调度器平衡吞吐与延迟。';
-      } else {
-        switch (tpl) {
-          case 'logic':
-            analysis = '【逻辑链条推理】针对选区：“$text”\n\n'
-                '1. 前置假设：所有写事务必须在主库落盘前先行写入持久层日志。\n'
-                '2. 因果传导：顺序日志追加极大消除了随机寻道耗时，解耦读写锁。\n'
-                '3. 潜在隐患：检查点滞后将引发日志膨胀，需配置动态截断。';
-            break;
-          case 'critical':
-            analysis = '【批判性审视】针对选区：“$text”\n\n'
-                '1. 边界局限：无锁读快照在极端内存受限场景下可能带来快照膨胀。\n'
-                '2. 权衡取舍：该方案用存储空间换取并发读性能，并非万能银弹。\n'
-                '3. 改进空间：引入冷热数据分层可进一步规避大快照抖动。';
-            break;
-          case 'term':
-            analysis = '【核心术语剖析】针对选区：“$text”\n\n'
-                '• WAL (Write-Ahead Logging)：预写式日志，用于保证 ACID 中的原子性与持久性。\n'
-                '• MVCC (多版本并发控制)：通过维护数据多版本快照实现读写互不阻塞。\n'
-                '• 检查点 (Checkpoint)：将 WAL 日志中已提交事务合并回主数据库并截断日志。';
-            break;
-          case 'general':
-          default:
-            analysis = '【通俗解读】针对选区：“$text”\n\n'
-                '简单来说，就像食堂打饭：以前是打菜师傅和盛饭师傅抢同一个勺子，'
-                '现在分成两条独立传送带，谁也不用等谁，大大提升了整体效率。';
-            break;
-        }
-      }
+      final analysis = _mockAnalysis(tpl.toString(), text.toString(), prompt.toString());
 
       return InvokeEnvelope(
         code: 0,

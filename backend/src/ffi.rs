@@ -72,9 +72,87 @@ pub fn dispatch_invoke(action: &str, payload: &str) -> Result<Value, String> {
     execute_action(action, payload)
 }
 
+/// 流式伴读三通道（task_17 D3）：免锁执行。
+fn execute_companion_action(action: &str, val: &Value) -> Result<Value, String> {
+    if action == "ai.companion_poll" {
+        let request_id = val
+            .get("request_id")
+            .and_then(|v| v.as_str())
+            .ok_or("ai.companion_poll requires request_id")?;
+        let state = crate::service::companion_poll(request_id)
+            .ok_or_else(|| format!("unknown companion stream: {}", request_id))?;
+        return Ok(json!({
+            "partial": state.partial,
+            "done": state.done,
+            "offline": state.offline,
+        }));
+    }
+
+    let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
+    let template_type = val.get("template_type").and_then(|v| v.as_str()).unwrap_or("general");
+    let selected_text = val.get("selected_text").and_then(|v| v.as_str()).unwrap_or("");
+    let prompt = val.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+
+    // 锁内只克隆 storage 句柄（Arc 内核），随即释放
+    let storage = {
+        let service_guard = get_service().lock().unwrap();
+        service_guard.storage.clone()
+    };
+    let config = crate::llm::LlmConfig::load();
+    let request_id = crate::service::companion_start(
+        Box::new(crate::llm::UreqLlmClient),
+        storage,
+        config,
+        book_id,
+        template_type.to_string(),
+        selected_text.to_string(),
+        prompt.to_string(),
+    );
+
+    if action == "ai.companion_start" {
+        return Ok(json!({ "request_id": request_id }));
+    }
+
+    // ai.companion_ask：轮询 join 至终态（契约兼容：response/template_type 不变）
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+    let mut response = String::new();
+    let mut offline = false;
+    loop {
+        std::thread::sleep(std::time::Duration::from_millis(30));
+        match crate::service::companion_poll(&request_id) {
+            Some(state) => {
+                response = state.partial.clone();
+                offline = state.offline;
+                if state.done {
+                    break;
+                }
+            }
+            None => break,
+        }
+        if std::time::Instant::now() > deadline {
+            crate::log_warn!("[TIMEOUT] companion_ask join exceeded 180s, return partial");
+            break;
+        }
+    }
+    let _ = offline;
+    Ok(json!({
+        "response": response,
+        "template_type": template_type,
+        "request_id": request_id,
+    }))
+}
+
 pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
-    let service_guard = get_service().lock().unwrap();
     let val: Value = serde_json::from_str(payload).unwrap_or(json!({}));
+
+    // 流式伴读三通道（task_17 D3）：LLM 调用全程不占用 SERVICE Mutex——
+    // companion_start 派生线程执行，companion_poll 只读注册表；
+    // companion_ask 以 start+轮询 join 保持旧契约，其他 action 不再被秒级 LLM 调用串行化阻塞。
+    if action == "ai.companion_start" || action == "ai.companion_poll" || action == "ai.companion_ask" {
+        return execute_companion_action(action, &val);
+    }
+
+    let service_guard = get_service().lock().unwrap();
 
     match action {
         "doc.parse" => {

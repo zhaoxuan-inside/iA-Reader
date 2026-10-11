@@ -1,13 +1,13 @@
 Package: ai-reader
-Version: 0.0.5
+Version: 0.0.6
 Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: AI Reader Team <dev@ai-reader.io>
-Depends: python3, libc6
+Depends: libc6, libgtk-3-0, libstdc++6
 Homepage: https://github.com/ai-reader/ai-reader
-Description: Headless Core Computation and Document Parsing Engine CLI
- AI Reader is a high-performance document parsing and cognitive computing engine
- supporting EPUB, PDF, Markdown, and TXT with offline tri-level NLP keyword extraction,
- concept co-occurrence topology graphs, structured mindmaps, SQLite persistence,
- and cognitive companion pipelines.
+Description: AI Reader —— 本地优先的沉浸式 AI 阅读工作台（Flutter 桌面应用）
+ Flutter (Linux/GTK) 桌面客户端 + Rust 核心引擎（libreader_core.so，C-ABI 单入口）：
+ EPUB/PDF/Markdown/TXT 解析、iA Writer 极简排版、划词标注（七种样式×调色板/人工批注）、
+ AI 认知伴读（流式 SSE/离线启发降级）、独立 AI 键盘、图形化知识导图与权重词云。
+ 数据集中存储 ~/.ai-reader（data/config/logs/books），本地优先、离线可用。
