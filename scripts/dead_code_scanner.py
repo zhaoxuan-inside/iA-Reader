@@ -25,20 +25,24 @@ class DeadCodeScanner:
     def __init__(self, workspace_root: str):
         self.root = Path(workspace_root).resolve()
         self.docs_root = self.root / "hs_dev_docs"
-        self.call_chain_dir = self.docs_root / "_07_call_chain"
+        self.call_chain_dirs = [
+            self.docs_root / "_04_engineering_contract" / "_05_call_chain",
+            self.docs_root / "_07_call_chain",
+        ]
 
     def scan(self) -> bool:
         print(f"[*] Scanning for dead code & orphan methods in: {self.root}")
 
         # 1. 收集调用链中已声明的所有方法
         declared_methods = set()
-        if self.call_chain_dir.exists():
-            for cf in self.call_chain_dir.rglob("*.md"):
-                content = cf.read_text(encoding="utf-8")
-                # 匹配表格中或代码块中的方法名
-                matches = re.findall(r"`([a-zA-Z0-9_]+)`", content)
-                for m in matches:
-                    declared_methods.add(m)
+        for cdir in self.call_chain_dirs:
+            if cdir.exists():
+                for cf in cdir.rglob("*.md"):
+                    content = cf.read_text(encoding="utf-8")
+                    # 匹配表格中或代码块中的方法名
+                    matches = re.findall(r"`([a-zA-Z0-9_]+)`", content)
+                    for m in matches:
+                        declared_methods.add(m)
 
         print(f"  -> Found {len(declared_methods)} methods referenced in call chain documentation.")
 
@@ -77,9 +81,9 @@ class DeadCodeScanner:
                                     })
 
         if orphan_methods:
-            print(f"[!] Warning: Found {len(orphan_methods)} potentially unreferenced/orphan methods (Not registered in _07_call_chain):")
+            print(f"[!] Warning: Found {len(orphan_methods)} potentially unreferenced/orphan methods (Not registered in _04_engineering_contract/_05_call_chain):")
             for om in orphan_methods:
-                print(f"  - {om['file']}:{om['line']} -> {om['method']} (Consider registering in _07_call_chain or adding @UsedByReflect)")
+                print(f"  - {om['file']}:{om['line']} -> {om['method']} (Consider registering in _04_engineering_contract/_05_call_chain or adding @UsedByReflect)")
         else:
             print("[PASS] Zero dead code detected. All methods are properly mapped in call chains!")
 

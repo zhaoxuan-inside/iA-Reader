@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>产品原型与多端可视化预览：AI Reader</title>
+<!--
+  零依赖单文件原型（无 CDN / 无外部字体 / 断网可用）
+  Inherits: /DESIGN.md v1.1.0  ·  Design Tokens 以 CSS Variables 落地
+  覆盖：多端视口(1440/768/390) · 四态(Empty/Loading/Populated/Error) · 明暗主题 · 9 个界面
+  真实可交互：划词 → 胶囊 → 流式伴读 → 存为边注 → 标注列表新增；导入拖拽；聚焦模式；设置连接测试
+-->
+<style>
+/* ===================== Design Tokens（映射 DESIGN.md） ===================== */
+:root{
+  --primary:#111827; --secondary:#6B7280; --muted:#9CA3AF;
+  --accent:#007AFF; --on-accent:#FFFFFF;
+  --canvas:#FAFAFA; --surface:#FFFFFF;
+  --border:#E5E7EB; --border-strong:#D1D5DB;
+  --code-bg:#F8F9FA; --code-inline-bg:#F3F4F6;
+  --highlight:#FEF08A; --highlight-veil:rgba(254,240,138,.40);
+  --success:#1B873F; --warning:#C47D00; --error:#D9383A;
+  --focus-ring:#007AFF;
+  --motion-fast:120ms; --motion-base:200ms; --motion-slow:240ms;
+  --ease:cubic-bezier(.2,0,0,1);
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-pill:20px;
+  --font-serif:"iA Writer Duo","Source Serif 4",Georgia,"Noto Serif CJK SC","Songti SC",serif;
+  --font-mono:"iA Writer Mono","JetBrains Mono","SFMono-Regular",Consolas,"Noto Sans Mono CJK SC",monospace;
+  --font-sans:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  --wb-bg:#0F0F11; --wb-line:#1F1F23; --wb-text:#E4E4E7; --wb-dim:#8B8B93;
+}
+[data-theme="dark"]{
+  --primary:#F4F4F5; --secondary:#A1A1AA; --muted:#71717A;
+  --accent:#38BDF8; --on-accent:#0B1220;
+  --canvas:#121214; --surface:#18181B;
+  --border:#27272A; --border-strong:#3F3F46;
+  --code-bg:#18181B; --code-inline-bg:#27272A;
+  --highlight:#3F3A1E; --highlight-veil:rgba(254,240,138,.18);
+  --success:#4ADE80; --warning:#FBBF24; --error:#F87171;
+  --focus-ring:#38BDF8;
+}
+
+/* ===================== Base ===================== */
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--wb-bg);color:var(--wb-text);font-family:var(--font-sans);
+     font-size:14px;display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+input{font:inherit}
+:focus-visible{outline:var(--focus-ring) solid 2px;outline-offset:2px}
+.tab{font-variant-numeric:tabular-nums}
+
+/* ===================== 开发者工作台 chrome ===================== */
+.wb{flex:0 0 auto;background:#09090B;border-bottom:1px solid var(--wb-line);
+    padding:10px 16px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;justify-content:space-between}
+.wb-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px}
+.wb-dot{width:10px;height:10px;border-radius:50%;background:#007AFF;display:inline-block}
+.wb-tag{font-family:var(--font-mono);font-size:10px;color:var(--wb-dim);border:1px solid var(--wb-line);
+        padding:2px 6px;border-radius:var(--r-xs)}
+.wb-seg{display:flex;background:#141417;border:1px solid var(--wb-line);border-radius:var(--r-md);padding:2px}
+.wb-btn{padding:5px 10px;border-radius:var(--r-sm);font-size:12px;font-weight:500;color:var(--wb-dim);
+        min-height:28px;transition:color var(--motion-fast) var(--ease),background var(--motion-fast) var(--ease)}
+.wb-btn:hover{color:var(--wb-text)}
+.wb-btn.on{background:#27272A;color:#FFF}
+.wb-lab{font-size:11px;color:var(--wb-dim);font-family:var(--font-mono)}
+.wb-hint{font-size:11px;color:var(--wb-dim)}
+
+/* ===================== 预览舞台 ===================== */
+.stage{flex:1 1 auto;overflow:auto;display:flex;justify-content:center;align-items:flex-start;padding:24px}
+#frame{width:100%;max-width:1440px;height:min(840px,calc(100vh - 170px));min-height:520px;
+       background:var(--canvas);color:var(--primary);
+       border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--wb-line);
+       transition:max-width var(--motion-base) var(--ease);position:relative;display:flex;flex-direction:column}
+.frame-bar{height:44px;flex:0 0 auto;background:var(--surface);border-bottom:1px solid var(--border);
+           display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+           transition:opacity var(--motion-slow) var(--ease)}
+.frame-bar.faded{opacity:0;pointer-events:none}
+.bar-side{display:flex;align-items:center;gap:12px}
+.icon-btn{width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;
+          border-radius:var(--r-sm);border:none;background:transparent;color:var(--secondary);
+          cursor:pointer;transition:color var(--motion-fast) var(--ease),background var(--motion-fast) var(--ease)}
+.icon-btn .ic{width:16px;height:16px;display:block}
+.icon-btn:hover{color:var(--accent);background:var(--code-inline-bg)}
+.icon-btn:active{transform:translateY(1px)}
+.icon-btn:focus-visible{outline:var(--focus-ring) solid 2px;outline-offset:1px}
+.bar-btn{display:none}
+.frame-title{font-size:13px;color:var(--secondary)}
+.win-dots{display:flex;gap:6px}
+.win-dot{width:12px;height:12px;border:1px solid var(--muted);border-radius:var(--r-xs)}
+.frame-body{flex:1 1 auto;padding:24px;position:relative;overflow:auto}
+.frame-body.mobile{padding:16px}
+
+/* ===================== 通用组件 ===================== */
+.btn{height:36px;padding:0 12px;border-radius:var(--r-sm);font-size:13px;font-weight:500;
+     display:inline-flex;align-items:center;justify-content:center;gap:6px;
+     transition:background var(--motion-fast) var(--ease),border-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease),transform var(--motion-fast) var(--ease)}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent);color:var(--on-accent)}
+.btn-primary:hover{opacity:.92}
+.btn-primary:active{transform:scale(.99) translateY(1px)}
+.btn-primary[disabled]{opacity:.5;cursor:not-allowed;transform:none}
+.btn-ghost{border:1px solid var(--border);color:var(--primary);background:transparent}
+.btn-ghost:hover{border-color:var(--border-strong)}
+.btn-text{color:var(--secondary);font-size:13px}
+.btn-text:hover{color:var(--accent)}
+.btn-danger{color:var(--error);font-size:13px}
+.link{color:var(--primary);text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px;cursor:pointer}
+.link:hover{color:var(--accent);text-decoration-thickness:2px}
+.mono{font-family:var(--font-mono)}
+.dim{color:var(--secondary)}
+.mute{color:var(--muted)}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.skeleton{background:var(--border);border-radius:var(--r-xs);height:16px;margin:12px 0;
+          animation:sk 1.8s cubic-bezier(.4,0,.6,1) infinite}
+@keyframes sk{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* 空态 / 错误态（无图形符号、无插画） */
+.banner{padding:56px 16px;text-align:center}
+.banner h2{margin:0;font-size:18px;font-weight:600;color:var(--primary)}
+.banner h2.err{color:var(--error)}
+.banner p{margin:8px 0 0;font-size:14px;color:var(--secondary)}
+.banner .acts{margin-top:20px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+/* ===================== 书库 ===================== */
+.lib-top{display:flex;gap:12px;align-items:center;margin-bottom:20px}
+.lib-top.col{flex-direction:column;align-items:stretch}
+.input{height:36px;padding:0 12px;border:1px solid var(--border);border-radius:var(--r-sm);
+       background:var(--surface);color:var(--primary);font-size:13px;width:100%;
+       transition:border-color var(--motion-fast) var(--ease)}
+.input::placeholder{color:var(--muted)}
+.input:hover{border-color:var(--border-strong)}
+.input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+
+.lib-list{border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.lib-row{display:flex;align-items:center;gap:16px;height:64px;padding:0 8px;cursor:pointer;
+         border-bottom:1px solid var(--border);transition:background var(--motion-fast) var(--ease)}
+.lib-row:last-child{border-bottom:none}
+.lib-row:hover{background:color-mix(in srgb,var(--canvas) 70%,var(--surface))}
+.lib-main{flex:1 1 auto;min-width:0}
+.lib-name{font-size:15px;font-weight:500;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lib-meta{font-size:12px;color:var(--secondary);margin-top:2px}
+.lib-fmt{font-family:var(--font-mono);font-size:10px;border:1px solid var(--border);border-radius:var(--r-xs);
+         padding:2px 6px;color:var(--secondary)}
+.lib-time{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+
+/* ===================== 阅读器 / Markdown 内容排版（DESIGN.md Content Typography） ===================== */
+.reader-wrap{display:grid;grid-template-columns:220px 1fr;gap:24px}
+.reader-wrap.single{grid-template-columns:1fr}
+.toc{font-size:13px;color:var(--secondary);display:flex;flex-direction:column;gap:8px}
+.toc-h{font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.toc-i{cursor:pointer;transition:color var(--motion-fast) var(--ease)}
+.toc-i:hover{color:var(--accent)}
+.toc-i.cur{color:var(--primary);font-weight:500;border-left:2px solid var(--accent);padding-left:8px}
+.toc-i.sub{padding-left:16px}
+
+.ct{max-width:700px;margin:0 auto;font-family:var(--font-serif);color:var(--primary);font-size:19px;line-height:1.7;letter-spacing:-.2px}
+.ct p{margin:0 0 16px}
+.ct h1{font-family:var(--font-sans);font-size:32px;line-height:1.25;font-weight:600;letter-spacing:-.02em;margin:40px 0 16px}
+.ct h2{font-family:var(--font-sans);font-size:24px;line-height:1.3;font-weight:600;letter-spacing:-.01em;margin:36px 0 12px}
+.ct h3{font-family:var(--font-sans);font-size:20px;line-height:1.4;font-weight:600;margin:28px 0 8px}
+.ct h4{font-family:var(--font-sans);font-size:17px;line-height:1.5;font-weight:500;color:var(--secondary);margin:24px 0 8px}
+.ct blockquote{margin:20px 0;padding-left:16px;border-left:2px solid var(--border);color:var(--secondary);font-size:17px;line-height:1.65}
+.ct ul{margin:0 0 16px;padding-left:24px}
+.ct ul li{list-style:none;position:relative;margin-bottom:8px}
+.ct ul li::before{content:"•";position:absolute;left:-16px;color:var(--muted)}
+.ct ol{margin:0 0 16px;padding-left:24px}
+.ct ol li{margin-bottom:8px}
+.ct ol li::marker{font-family:var(--font-mono);font-size:12px;color:var(--secondary)}
+.ct code{font-family:var(--font-mono);font-size:.9em;background:var(--code-inline-bg);
+         border-radius:var(--r-xs);padding:1px 4px}
+.ct pre{position:relative;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--r-md);
+        padding:16px;overflow:auto;margin:20px 0}
+.ct pre code{background:none;padding:0;font-size:13px;line-height:1.6}
+.ct pre .lang{position:absolute;top:8px;right:12px;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+.ct hr{border:none;border-top:1px solid var(--border);margin:32px 0}
+.ct a{cursor:pointer}
+.ct strong{font-weight:600}
+.ct em{font-style:italic}
+.ct table{width:100%;border-collapse:collapse;margin:20px 0;font-family:var(--font-sans);font-size:14px}
+.ct th,.ct td{border:1px solid var(--border);padding:10px 12px;text-align:left;height:44px}
+.ct th{font-weight:600;font-family:var(--font-mono);font-size:12px}
+.ct td.num{font-variant-numeric:tabular-nums}
+.ct figure{margin:24px 0}
+.ct figure .ph{height:160px;border:1px solid var(--border);border-radius:var(--r-md);
+               display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;font-family:var(--font-mono)}
+.ct figcaption{margin-top:8px;font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.ct .task{list-style:none;padding-left:0}
+.ct .task li::before{content:"□";margin-right:8px;color:var(--secondary)}
+.ct .task li.done::before{content:"■"}
+
+/* 聚焦模式 */
+.ct.focus p{opacity:.65;transition:opacity var(--motion-base) var(--ease)}
+.ct.focus p.lit{opacity:1}
+
+/* 划词胶囊 */
+.pill{position:absolute;display:none;align-items:center;gap:12px;padding:6px 14px;
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--r-pill);
+      font-family:var(--font-mono);font-size:12px;color:var(--primary);z-index:30;white-space:nowrap}
+.pill.on{display:inline-flex}
+.pill .t{cursor:pointer;transition:color var(--motion-fast) var(--ease)}
+.pill .t:hover{color:var(--accent)}
+.pill .sep{color:var(--border)}
+.hl{background:var(--highlight-veil)}
+.hl-block{background:var(--highlight-veil);border-left:2px solid var(--accent);padding-left:6px;margin-left:-8px}
+
+/* ===================== 毛玻璃模态 + 伴读卡片 ===================== */
+#overlay{position:absolute;inset:0;z-index:20;pointer-events:none}
+#overlay > *{pointer-events:auto}
+.frost{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;
+       background:color-mix(in srgb,var(--canvas) 62%,transparent);
+       -webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);
+       animation:fadein var(--motion-slow) var(--ease)}
+[data-theme="dark"] .frost{background:rgba(18,18,20,.72)}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.card{width:440px;max-width:100%;max-height:600px;display:flex;flex-direction:column;
+      background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;
+      animation:cardin var(--motion-slow) var(--ease)}
+@keyframes cardin{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.card-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+.card-head .l{display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:11px;color:var(--secondary)}
+.badge{font-family:var(--font-mono);font-size:10px;border:1px solid var(--border);border-radius:var(--r-xs);
+       padding:1px 6px;color:var(--secondary)}
+.badge.warn{color:var(--warning);border-color:var(--warning)}
+.card-body{padding:16px;font-size:15px;line-height:1.65;color:var(--primary);overflow:auto;flex:1 1 auto;white-space:pre-wrap}
+.card-foot{padding:0 16px 16px}
+.followup{height:36px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--border);
+          border-radius:var(--r-sm);font-size:13px;color:var(--primary)}
+.followup.on{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+.followup .ph{color:var(--muted)}
+.caret{display:inline-block;width:7px;height:15px;background:var(--accent);vertical-align:-2px;margin-left:2px;
+        animation:blink 1s steps(2,start) infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Mobile Bottom Sheet */
+.sheet{position:absolute;left:0;right:0;bottom:0;top:auto;z-index:20;background:var(--surface);
+       border-top:1px solid var(--border);border-radius:var(--r-lg) var(--r-lg) 0 0;
+       padding:12px 16px 16px;display:flex;flex-direction:column;gap:12px;animation:sheetin var(--motion-base) var(--ease)}
+@keyframes sheetin{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.grip{width:36px;height:4px;border-radius:var(--r-pill);background:var(--border-strong);margin:0 auto}
+
+/* ===================== 知识导图 ===================== */
+.mm{max-width:680px;margin:0 auto;text-align:center;position:relative}
+.mm-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.mm-node{display:inline-block;padding:6px 12px;border:1px solid var(--border);border-radius:var(--r-sm);
+         font-size:13px;background:var(--surface);position:relative;z-index:1;cursor:pointer;
+         transition:border-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease)}
+.mm-node:hover{border-color:var(--border-strong)}
+.mm-node.cur{border-color:var(--accent);color:var(--accent);font-weight:500}
+.mm-row{display:flex;justify-content:center;gap:24px;flex-wrap:wrap;margin-bottom:24px;position:relative;z-index:1}
+.mm-leaf{font-size:12px;color:var(--secondary);border:1px solid var(--border);border-radius:var(--r-xs);padding:3px 8px;background:var(--surface)}
+.mm-tools{display:flex;justify-content:center;gap:8px;margin-top:24px}
+
+/* ===================== 词云 ===================== */
+.wc{max-width:660px;margin:0 auto}
+.wc-toggle{display:flex;justify-content:center;gap:8px;margin-bottom:28px}
+.wc-toggle .t{padding:4px 12px;border-radius:var(--r-sm);font-size:12px;border:1px solid var(--border);color:var(--secondary)}
+.wc-toggle .t.on{background:var(--primary);color:var(--canvas);border-color:var(--primary)}
+.wc-cloud{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:12px 24px;line-height:1.2}
+.wc-w{cursor:pointer}
+.wc-w:hover{text-decoration:underline;text-underline-offset:3px}
+
+/* ===================== AI 键盘 ===================== */
+.kb{max-width:700px;margin:0 auto}
+.kb-bar{display:flex;align-items:center;justify-content:space-between;font-family:var(--font-mono);
+        font-size:11px;color:var(--secondary);border-top:1px solid var(--border);padding-top:12px;margin-top:20px}
+.kb-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.kb-key{min-width:96px;height:64px;display:flex;align-items:center;justify-content:center;
+        border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface);
+        font-family:var(--font-mono);font-size:13px;color:var(--primary);
+        transition:border-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease)}
+.kb-key:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ===================== 设置 ===================== */
+.panel{max-width:520px;margin:0 auto;background:var(--surface);border:1px solid var(--border);
+       border-radius:var(--r-lg);padding:20px}
+.panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.panel-head h3{margin:0;font-size:15px;font-weight:600}
+.field{display:block;margin-bottom:12px}
+.field .lab{display:block;font-family:var(--font-mono);font-size:11px;color:var(--secondary);margin-bottom:4px}
+.field .err{display:block;font-size:12px;color:var(--error);margin-top:4px}
+.panel-foot{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);
+            padding-top:16px;margin-top:4px;gap:12px;flex-wrap:wrap}
+.state-ok{color:var(--success);font-size:12px}
+.state-run{color:var(--secondary);font-size:12px}
+.state-err{color:var(--error);font-size:12px}
+.adv{font-family:var(--font-mono);font-size:11px;color:var(--secondary);cursor:pointer;margin-bottom:16px;
+     transition:color var(--motion-fast) var(--ease)}
+.adv:hover{color:var(--accent)}
+.adv-body{border:1px solid var(--border);border-radius:var(--r-md);padding:12px;margin-bottom:16px;font-size:13px;color:var(--secondary)}
+
+/* ===================== 标注 ===================== */
+.anno-wrap{max-width:560px;margin:0 auto}
+.anno-src{font-family:var(--font-serif);font-size:17px;line-height:1.9;color:var(--primary);margin-bottom:20px}
+.style-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-family:var(--font-mono);font-size:11px;color:var(--secondary);
+           border:1px solid var(--border);border-radius:var(--r-md);padding:10px;background:var(--surface);margin-bottom:20px}
+.style-chip{padding:2px 6px;border-radius:var(--r-xs);cursor:pointer;transition:background var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease)}
+.style-chip:hover{color:var(--accent)}
+.style-chip.on{background:var(--primary);color:var(--canvas)}
+.swatch{width:20px;height:20px;border-radius:50%;border:1px solid var(--border);cursor:pointer;display:inline-block}
+.anno-list{border-top:1px solid var(--border);padding-top:16px}
+.anno-h{font-family:var(--font-mono);font-size:11px;color:var(--secondary);margin-bottom:8px}
+.anno-row{display:flex;align-items:center;gap:12px;height:48px;border-bottom:1px solid var(--border);
+          font-size:13px;color:var(--primary)}
+.anno-row .sty{color:var(--secondary);min-width:52px}
+.anno-row .txt{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anno-row .note{color:var(--muted);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.anno-row .by{font-family:var(--font-mono);font-size:10px;border:1px solid var(--border);border-radius:var(--r-xs);
+              padding:1px 6px;color:var(--secondary)}
+
+/* ===================== 三端分发 ===================== */
+.plat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:1000px;margin:0 auto}
+.plat-grid.single{grid-template-columns:1fr}
+.plat-card{border:1px solid var(--border);border-radius:var(--r-md);padding:16px;background:var(--surface)}
+.plat-card h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.plat-card .sub{font-size:12px;color:var(--secondary);margin-bottom:12px}
+.plat-card dl{margin:0;font-size:12px}
+.plat-card dt{font-family:var(--font-mono);font-size:11px;color:var(--muted);margin-top:10px}
+.plat-card dd{margin:2px 0 0;color:var(--primary);word-break:break-all}
+.plat-note{max-width:1000px;margin:20px auto 0;font-size:12px;color:var(--secondary);
+           border-top:1px solid var(--border);padding-top:12px}
+
+/* ===================== 导入对话框 / 拖拽 ===================== */
+.veil{position:absolute;inset:0;z-index:40;background:color-mix(in srgb,var(--canvas) 45%,transparent);
+      -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:24px}
+.dialog{width:480px;max-width:92%;background:var(--surface);border:1px solid var(--border);
+        border-radius:var(--r-lg);padding:20px;animation:cardin var(--motion-slow) var(--ease)}
+.dialog h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.dialog .sub{font-size:12px;color:var(--secondary);margin-bottom:16px}
+.drop{border:1px dashed var(--border-strong);border-radius:var(--r-md);padding:28px 16px;text-align:center;
+      font-size:13px;color:var(--secondary);transition:border-color var(--motion-fast) var(--ease),color var(--motion-fast) var(--ease)}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+.prog{height:2px;background:var(--border);border-radius:var(--r-pill);overflow:hidden;margin-top:14px}
+.prog > i{display:block;height:100%;background:var(--accent);width:0;transition:width 160ms linear}
+.dialog-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+
+/* ===================== Toast ===================== */
+#toast{position:fixed;left:50%;bottom:32px;transform:translateX(-50%) translateY(8px);
+       background:var(--wb-bg);color:#FFF;border:1px solid #27272A;border-radius:var(--r-md);
+       padding:9px 16px;font-size:13px;opacity:0;pointer-events:none;transition:opacity var(--motion-base) var(--ease),transform var(--motion-base) var(--ease);z-index:99}
+#toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+footer.wb-foot{flex:0 0 auto;background:#09090B;border-top:1px solid var(--wb-line);padding:6px 16px;
+                font-family:var(--font-mono);font-size:11px;color:var(--wb-dim)}
+
+/* ===================== 无障碍：动效降级 ===================== */
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition:none!important;animation:none!important}
+  .skeleton{opacity:.4}
+  .caret{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 开发者工作台 ============ -->
+<header class="wb">
+  <div class="wb-group">
+    <div class="wb-brand"><span class="wb-dot"></span>AI Reader Prototype</div>
+    <span class="wb-tag">Inherits /DESIGN.md v1.1.0</span>
+    <span class="wb-tag">零依赖 · 断网可用</span>
+  </div>
+  <div class="wb-group">
+    <span class="wb-lab">视口</span>
+    <div class="wb-seg" id="seg-vp">
+      <button class="wb-btn on" data-vp="desktop">桌面 1440</button>
+      <button class="wb-btn" data-vp="tablet">平板 768</button>
+      <button class="wb-btn" data-vp="mobile">移动 390</button>
+    </div>
+    <span class="wb-lab">四态</span>
+    <div class="wb-seg" id="seg-state">
+      <button class="wb-btn on" data-state="normal">正常</button>
+      <button class="wb-btn" data-state="empty">空态</button>
+      <button class="wb-btn" data-state="loading">加载</button>
+      <button class="wb-btn" data-state="error">错误</button>
+    </div>
+    <span class="wb-lab">主题</span>
+    <div class="wb-seg" id="seg-theme">
+      <button class="wb-btn on" data-theme="light">明</button>
+      <button class="wb-btn" data-theme="dark">暗</button>
+    </div>
+  </div>
+  <div class="wb-group">
+    <span class="wb-lab">界面</span>
+    <div class="wb-seg" id="seg-surface">
+      <button class="wb-btn on" data-surface="library">书库</button>
+      <button class="wb-btn" data-surface="reader">阅读+胶囊</button>
+      <button class="wb-btn" data-surface="companion">伴读卡片</button>
+      <button class="wb-btn" data-surface="mindmap">导图</button>
+      <button class="wb-btn" data-surface="wordcloud">词云</button>
+      <button class="wb-btn" data-surface="keyboard">AI 键盘</button>
+      <button class="wb-btn" data-surface="settings">设置</button>
+      <button class="wb-btn" data-surface="annotation">标注</button>
+      <button class="wb-btn" data-surface="platform">三端分发</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============ 预览舞台 ============ -->
+<main class="stage">
+  <div id="frame">
+    <div class="frame-bar" id="frameBar">
+      <div class="bar-side">
+        <button class="icon-btn" id="btn-toc" aria-label="目录" title="目录">
+        <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+          <path d="M2 4.5h12 M2 8h9 M2 11.5h12"/>
+        </svg>
+      </button>
+      </div>
+      <div class="frame-title" id="winTitle">我的书库</div>
+      <div class="bar-side">
+        <button class="icon-btn" id="btn-focus" aria-label="聚焦模式" title="聚焦模式（Esc 退出）">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="8" r="6.2"/><circle cx="8" cy="8" r="2.2" fill="currentColor" stroke="none"/>
+          </svg>
+        </button>
+        <button class="icon-btn" id="btn-companion" aria-label="AI 伴读" title="AI 伴读">
+          <svg class="ic" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3.2h10a1.5 1.5 0 0 1 1.5 1.5v5.6a1.5 1.5 0 0 1-1.5 1.5H9l-2.8 2.4v-2.4H3a1.5 1.5 0 0 1-1.5-1.5V4.7a1.5 1.5 0 0 1 1.5-1.5z"/>
+          </svg>
+        </button>
+        <div class="win-dots"><i class="win-dot"></i><i class="win-dot"></i><i class="win-dot"></i></div>
+      </div>
+    </div>
+    <div class="frame-body" id="frameBody" role="main" aria-label="阅读舞台"></div>
+    <div id="overlay"></div>
+  </div>
+</main>
+
+<footer class="wb-foot">
+  iA Writer 极简 Tokens · 零 emoji · 无装饰阴影/渐变 · 版心 700px · 四态 · 明暗 · 九界面直读 · 试：在阅读界面拖选文字
+</footer>
+<div id="toast"></div>
+
+<script>
+/* ===================== 全局状态 ===================== */
+const S = {
+  vp:'desktop', state:'normal', surface:'library', theme:'light',
+  focus:false, advanced:false,
+  import:{open:false, over:false, progress:0, importing:false, error:''},
+  sel:null,                        // {text, paraIndex, x, y}
+  card:null,                       // {template, text, ttft, streaming, saved, followup:[], q:''}
+  conn:'ok',                       // ok | running | fail
+  wcScope:'all',
+  annotations:[
+    {style:'下划线', text:'深度的专注需要仪式感…', note:'对抗注意力碎片', by:'AI'},
+    {style:'波浪',   text:'注意力碎片侵入了流…', note:'疑问：何谓碎片？', by:'人工'},
+    {style:'高亮',   text:'仪式是最低成本约束', note:'（无）', by:'人工'}
+  ]
+};
+
+/* ===================== 语料 ===================== */
+const BOOKS = [
+  ['深度工作','Cal Newport','MD','62%','2 小时前'],
+  ['论人类不平等的起源','卢梭','TXT','8%','昨天'],
+  ['认知设计','Don Norman','MD','100%','3 天前'],
+  ['枪炮、病菌与钢铁','Jared Diamond','MD','34%','上周']
+];
+const TEMPLATES = {
+  general:'这段话在说：专注力是需要被"守护"的稀缺资源，而仪式感是一种低成本的外部约束。'+
+          '作者用"侵入"这个动词把碎片信息拟人化，强调它不是被动等待而是主动争夺注意力——'+
+          '因此结论是：想深读，先建立进入仪式。',
+  logic:'本段推理链为三步：\n① 专注需要外部约束来对抗注意力碎片化；\n'+
+        '② 仪式感是最低成本的约束信号；\n③ 因此深度阅读需先建立进入仪式。',
+  critical:'作者的前提"注意力必然被碎片侵入"是强假设：在低干扰环境中并不成立。'+
+           '其次，"仪式感"与"效率"之间缺少实证支撑——它更可能是自我暗示而非真实约束。'+
+           '可取之处在于把问题从"能不能专注"转成了"如何低成本地进入专注"。',
+  term:'仪式感（ritual）：一组被重复执行、本身不直接产出结果，但用于标记状态切换的固定动作序列。'+
+       '在本段语境中，它承担"注意力开关"的功能。'
+};
+const TPL_LABEL = {general:'通俗解读', logic:'逻辑链推理', critical:'批判性思考', term:'术语溯源'};
+
+/* ===================== 工具 ===================== */
+const $ = s => document.querySelector(s);
+let toastTimer=null;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('on');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('on'),1800);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function activeTpl(){ return S.card && S.card.template; }
+
+/* ===================== 工作台事件 ===================== */
+$('#seg-vp').addEventListener('click',e=>{
+  const b=e.target.closest('[data-vp]'); if(!b) return;
+  S.vp=b.dataset.vp; mark($('#seg-vp'),'vp',S.vp); render();
+});
+$('#seg-state').addEventListener('click',e=>{
+  const b=e.target.closest('[data-state]'); if(!b) return;
+  S.state=b.dataset.state; mark($('#seg-state'),'state',S.state); render();
+});
+$('#seg-theme').addEventListener('click',e=>{
+  const b=e.target.closest('[data-theme]'); if(!b) return;
+  S.theme=b.dataset.theme; mark($('#seg-theme'),'theme',S.theme);
+  document.documentElement.dataset.theme=S.theme; render();
+});
+$('#seg-surface').addEventListener('click',e=>{
+  const b=e.target.closest('[data-surface]'); if(!b) return;
+  goto(b.dataset.surface);
+});
+function mark(seg,attr,val){
+  seg.querySelectorAll('[data-'+attr+']').forEach(b=>b.classList.toggle('on',b.dataset[attr]===val));
+}
+function newCard(tpl){ return {template:tpl||'logic',text:'',ttft:0,streaming:false,saved:false,followup:[]}; }
+function goto(surface){
+  S.surface=surface; S.sel=null; S.focus=false;
+  if(surface==='companion' && !S.card) S.card=newCard('logic');
+  mark($('#seg-surface'),'surface',surface);
+  $('#winTitle').textContent=({library:'我的书库',reader:'深度工作 · 第二章',companion:'AI 认知伴读',
+    mindmap:'知识导图',wordcloud:'关键词',keyboard:'AI 键盘',settings:'伴读连接设置',
+    annotation:'标注',platform:'三端分发与本地数据'})[surface];
+  render();
+}
+
+/* ===================== 顶栏：聚焦模式 / 目录 / 伴读 ===================== */
+$('#btn-focus').addEventListener('click',()=>{
+  if(S.surface!=='reader'&&S.surface!=='keyboard') goto('reader');
+  S.focus=!S.focus; toast(S.focus?'聚焦模式：专注当前段落':'已退出聚焦模式'); render();
+});
+$('#btn-companion').addEventListener('click',()=>goto('companion'));
+$('#btn-toc').addEventListener('click',()=>{ if(S.surface!=='reader') goto('reader'); toast('目录已就绪（左侧栏）'); });
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(S.import.open){ S.import.open=false; render(); return; }
+    if(S.card){ S.card=null; if(S.surface==='companion'){ S.surface='reader'; mark($('#seg-surface'),'surface','reader'); } render(); return; }
+    if(S.focus){ S.focus=false; render(); }
+  }
+});
+
+/* ===================== 渲染 ===================== */
+function render(){
+  const body=$('#frameBody');
+  body.classList.toggle('mobile',S.vp==='mobile');
+  $('#frame').style.maxWidth={desktop:'1440px',tablet:'768px',mobile:'390px'}[S.vp];
+  $('#frameBar').classList.toggle('faded', S.focus && S.surface==='reader');
+  const isM = S.vp==='mobile';
+  let html='';
+
+  if(S.surface==='library')       html=viewLibrary(isM);
+  else if(S.surface==='reader')   html=viewReader(isM);
+  else if(S.surface==='companion')html=viewCompanion(isM);
+  else if(S.surface==='mindmap')  html=viewMindmap(isM);
+  else if(S.surface==='wordcloud')html=viewWordcloud(isM);
+  else if(S.surface==='keyboard') html=viewKeyboard(isM);
+  else if(S.surface==='settings') html=viewSettings(isM);
+  else if(S.surface==='annotation')html=viewAnnotation(isM);
+  else if(S.surface==='platform') html=viewPlatform(isM);
+
+  body.innerHTML=html;
+  const isMv = S.vp==='mobile';
+  let ov='';
+  if(S.surface==='companion') ov += viewCompanionOverlay(isMv);
+  if(S.import.open) ov += viewImportDialog();
+  $('#overlay').innerHTML = ov;
+  bindSurface(isM);
+  if(S.card && S.surface==='companion') renderCardStream();
+}
+
+/* ---------- 空/错态 ---------- */
+function banner(title,desc,acts,err){
+  return `<div class="banner"><h2 class="${err?'err':''}">${err?'! ':''}${esc(title)}</h2>
+    <p>${esc(desc)}</p>${acts?`<div class="acts">${acts}</div>`:''}</div>`;
+}
+function skeleton(n=4,title=''){
+  return `<div>${title?`<div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:4px">${esc(title)}</div>`:''}
+    ${Array.from({length:n}).map((_,i)=>`<div class="skeleton" style="width:${58+(i*9)%34}%"></div>`).join('')}</div>`;
+}
+
+/* ---------- 1. 书库 ---------- */
+function viewLibrary(isM){
+  const top=`<div class="lib-top ${isM?'col':''}">
+      <input class="input" placeholder="搜索标题…" aria-label="搜索标题">
+      <button class="btn btn-primary" data-act="open-import" style="${isM?'width:100%':''}">导入本地文档</button>
+    </div>`;
+  if(S.state==='empty') return top+banner('还没有任何文档','把 Markdown 或 TXT 拖入窗口，开始沉浸式阅读与 AI 伴读',
+    `<button class="btn btn-primary" data-act="open-import">导入本地文档</button>
+     <button class="btn btn-ghost" data-act="load-demo">载入示例文章</button>`);
+  if(S.state==='loading') return top+skeleton(5,'正在载入书库…');
+  if(S.state==='error') return top+banner('当前版本仅支持 Markdown 与 TXT','PDF/EPUB 将在后续版本支持，请先转换或更换文件',
+    `<button class="btn btn-ghost" data-act="open-import">重新选择文件</button>`,true);
+  return top+`<div class="lib-list">${BOOKS.map((r,i)=>`
+      <div class="lib-row" data-act="open-book" data-i="${i}">
+        <div class="lib-main"><div class="lib-name">${esc(r[0])}</div>
+          <div class="lib-meta">${esc(r[1])} · <span class="tab">${r[3]}</span></div></div>
+        <span class="lib-fmt">${r[2]}</span>
+        <span class="lib-time ${isM?'':''}">${r[4]}</span>
+      </div>`).join('')}</div>`;
+}
+
+/* ---------- 2. 阅读器 ---------- */
+function articleFocus(i){ return S.focus ? (S.sel && S.sel.paraIndex===i ? ' lit' : '') : ''; }
+function viewReader(isM,backdrop){
+  if(S.state==='loading') return skeleton(6,'正在解析文档…');
+  if(S.state==='error') return banner('该文档部分语法无法完整解析','已按纯文本降级渲染，阅读不受影响',
+    `<button class="btn btn-ghost" data-act="reparse">重新解析</button>`,true);
+  if(S.state==='empty') return banner('该文档内容为空','请返回书库导入包含正文的 Markdown 或 TXT 文档',
+    `<button class="btn btn-ghost" data-act="to-library">返回书库</button>`);
+  const toc=isM?'':`<aside class="toc">
+      <div class="toc-h">目录</div>
+      <div class="toc-i">第一章 两种专注</div>
+      <div class="toc-i cur">第二章 专注的仪式</div>
+      <div class="toc-i sub">· 小节 A</div>
+      <div class="toc-i sub">· 小节 B</div>
+      <div class="toc-i">第三章 告别网络</div>
+    </aside>`;
+  const body=`<article class="ct ${S.focus?'focus':''}" id="article">
+    <h2>第二章 专注的仪式</h2>
+    <p class="${articleFocus(0).trim()}">深度的专注需要仪式感来守护，让注意力不被碎片信息侵入。</p>
+    <p class="${articleFocus(1).trim()}">深度的专注需要仪式感来守护，这是一段正在深度阅读的正文，排版纯粹宁静。<span class="hl" data-hl="1">仪式感是最低成本的约束信号</span>，它把散乱的注意力重新收拢。</p>
+    <div style="margin:20px 0;text-align:${isM?'center':'left'}">
+      <span class="mono" style="display:inline-flex;align-items:center;gap:12px;padding:6px 14px;border:1px solid var(--border);border-radius:var(--r-pill);background:var(--surface);font-size:12px">
+        <span class="t" data-tpl="general" style="cursor:pointer">通俗</span><span class="sep" style="color:var(--border)">|</span>
+        <span class="t" data-tpl="logic" style="cursor:pointer">逻辑</span><span class="sep" style="color:var(--border)">|</span>
+        <span class="t" data-tpl="critical" style="cursor:pointer">批判</span><span class="sep" style="color:var(--border)">|</span>
+        <span class="t" data-tpl="term" style="cursor:pointer">术语</span><span class="sep" style="color:var(--border)">|</span>
+        <span class="t" data-act="hl-sel" style="cursor:pointer">高亮</span>
+      </span>
+      <div class="mono" style="font-size:11px;color:var(--muted);margin-top:8px">拖选任意文字 → 就近浮出划词胶囊</div>
+    </div>
+    <blockquote>仪式感是最低成本的约束信号——它不产出内容，只负责切换状态。</blockquote>
+    <p class="${articleFocus(2).trim()}">接续下一段深刻论述，保持 60fps 丝滑滚动，界面静默隐退。</p>
+    <h3>3.1 列表与代码的排版</h3>
+    <ul>
+      <li>无序列表使用 <code>•</code> 标记，缩进 24px，项间 8px</li>
+      <li>行内代码用等宽字体 + <code>--code-inline-bg</code> 底色，圆角 4px</li>
+    </ul>
+    <pre><code># 阅读进度写入（本地 SQLite / WAL）
+update reading_progress set position = ?, updated_at = ? where book_id = ?;
+</code><span class="lang">sql</span></pre>
+    <p>行内公式与术语：<strong>仪式感</strong>、<em>ritual</em>、<code>reading_progress</code>。</p>
+    <hr>
+    <table><thead><tr><th>模板</th><th>用途</th><th class="num">TTFT 预算</th></tr></thead>
+      <tbody>
+        <tr><td>通俗解读</td><td>快速理解段落大意</td><td class="num">800ms</td></tr>
+        <tr><td>逻辑链推理</td><td>抽取论证结构</td><td class="num">800ms</td></tr>
+        <tr><td>术语溯源</td><td>概念定义与出处</td><td class="num">600ms</td></tr>
+      </tbody></table>
+    <figure><div class="ph">[ 版心内图片占位 · max-width 100% · 圆角 8px ]</div>
+      <figcaption>图 2-1 状态切换的固定动作序列</figcaption></figure>
+    <p>继续阅读正文，<span class="link" data-act="noop">外部链接示例</span> 保持正文色与下划线。</p>
+    ${S.focus?`<p class="mono" style="font-size:11px;color:var(--muted)">聚焦模式：当前段 100%，其余段 65%（Esc 退出）</p>`:''}
+  </article>`;
+  return `<div class="reader-wrap ${isM?'single':''}">${toc}<div style="position:relative">${body}
+    ${backdrop?'':pillHtml()}</div></div>`;
+}
+function pillHtml(){
+  if(!S.sel) return '';
+  return `<span class="pill on" id="pill" style="left:${S.sel.x}px;top:${S.sel.y}px">
+    <span class="mono" style="font-size:10px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis">“${esc(S.sel.text.slice(0,10))}”</span>
+    <span class="sep">|</span>
+    <span class="t" data-tpl="general">通俗</span><span class="sep">|</span>
+    <span class="t" data-tpl="logic">逻辑</span><span class="sep">|</span>
+    <span class="t" data-tpl="critical">批判</span><span class="sep">|</span>
+    <span class="t" data-tpl="term">术语</span><span class="sep">|</span>
+    <span class="t" data-act="hl-sel">高亮</span>
+  </span>`;
+}
+
+/* ---------- 3. 伴读卡片 ---------- */
+function viewCompanion(isM){
+  // 背景层：真实阅读版心（被毛玻璃遮罩，保留目录）
+  return `<div style="pointer-events:none">${viewReaderBackdrop()}</div>`;
+}
+function viewCompanionOverlay(isM){
+  if(!S.card) S.card=newCard('logic');
+
+  if(S.state==='error'){
+    const inner=`<div class="card" data-stop="1" style="max-width:440px;padding:16px">
+        <div style="color:var(--error);font-size:15px;font-weight:600">! 连接失败</div>
+        <p style="font-size:13px;color:var(--secondary);margin:6px 0 0">端点无响应，已保留你的选区。请检查网络后重试，或改用离线摘要。</p>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn-ghost" style="height:32px;font-size:12px" data-act="retry">重新生成</button>
+          <button class="btn btn-text" style="font-size:12px" data-act="offline">用离线摘要</button>
+        </div></div>`;
+    return isM?`<div class="sheet">${inner}</div>`:`<div class="frost">${inner}</div>`;
+  }
+  const card = cardHtml(isM);
+  if(isM) return `<div class="sheet">${card}</div>`;
+  return `<div class="frost" data-act="dismiss-card">${card}</div>`;
+}
+function viewReaderBackdrop(){
+  // 背景：真实阅读版心（不渲染划词胶囊、不响应指针）
+  return viewReader(false,true);
+}
+function cardHtml(isM){
+  const c=S.card;
+  const badge = c.saved?`<span class="badge">已归档为边注</span>`
+    : (S.state==='loading'||c.streaming?`<span class="badge">生成中</span>`:'');
+  const header=`<div class="card-head">
+      <div class="l"><span>${esc(TPL_LABEL[c.template]||'伴读')}${c.ttft?` · TTFT ${c.ttft}ms`:(c.streaming?' · …':'')}</span>${badge}</div>
+      <div class="l">
+        <button class="btn-text" style="font-size:11px" data-act="save-note">${c.saved?'已存为边注':'存为边注'}</button>
+        <button class="btn-text" style="font-size:11px" data-act="dismiss-card">✕</button>
+      </div></div>`;
+  let inner;
+  if(S.state==='loading' && !c.text){
+    inner=skeleton(4);
+  } else if(S.state==='empty'){
+    inner=`<span class="mute">选择一段文本发起伴读后，解读将在此流式呈现。</span>`;
+  } else {
+    inner = c.text ? esc(c.text) : '';
+    inner += c.followup.map(f=>`\n\n${esc(f.q)}\n${esc(f.a)}`).join('');
+    if(c.streaming) inner += `<span class="caret"></span>`;
+  }
+  const foot=`<div class="card-foot">
+      <input class="followup" id="fu" placeholder="追问本段细节…" autocomplete="off" aria-label="追问本段细节">
+      </div>`;
+  return `<div class="card" data-stop="1" style="width:${isM?'100%':'440px'}">${header}
+      <div class="card-body" id="cardBody">${inner}</div>${foot}</div>`;
+}
+function renderCardStream(){
+  const el=$('#cardBody'); if(!el||!S.card) return;
+  const c=S.card;
+  if(S.state==='loading' && !c.text){ return; }         // 骨架屏由 render 负责
+  let out = c.text ? esc(c.text) : '';
+  out += c.followup.map(f=>`\n\n${esc(f.q)}\n${esc(f.a)}`).join('');
+  el.innerHTML = out + (c.streaming?`<span class="caret"></span>`:'');
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ---------- 4. 导图 ---------- */
+function viewMindmap(isM){
+  if(S.state==='empty') return banner('内容过少，暂无导图','该文档内容不足以生成知识导图');
+  if(S.state==='loading') return `<div style="max-width:560px;margin:0 auto">${skeleton(3,'正在构建知识导图…')}</div>`;
+  if(S.state==='error') return banner('导图生成失败','请返回阅读后重试',`<button class="btn btn-ghost" data-act="retry">重试</button>`,true);
+  return `<div class="mm">
+    <svg class="mm-svg" viewBox="0 0 640 260" preserveAspectRatio="none">
+      <path d="M320,40 L320,70 M320,70 L150,70 M320,70 L490,70"
+            stroke="var(--border)" stroke-width="1" fill="none"/>
+      <path d="M150,70 L150,120 M150,120 L60,120 M150,120 L240,120"
+            stroke="var(--border)" stroke-width="1" fill="none"/>
+      <path d="M490,70 L490,120 M490,120 L400,120 M490,120 L580,120"
+            stroke="var(--border)" stroke-width="1" fill="none"/>
+    </svg>
+    <div class="mm-row" style="margin-top:0"><span class="mm-node">深度工作</span></div>
+    <div class="mm-row">
+      <span class="mm-node">第一章 专注力</span>
+      <span class="mm-node cur">第二章 仪式</span>
+      <span class="mm-node">第三章 告别网络</span>
+    </div>
+    <div class="mm-row">
+      <span class="mm-leaf">碎片</span><span class="mm-leaf">界限</span><span class="mm-leaf">约束</span>
+      <span class="mm-leaf">习惯</span><span class="mm-leaf">心流</span>
+    </div>
+    <div class="mm-tools">
+      <button class="btn btn-ghost" style="height:28px;font-size:12px" data-act="zoom-in">放大</button>
+      <button class="btn btn-ghost" style="height:28px;font-size:12px" data-act="zoom-out">缩小</button>
+      <button class="btn btn-text" style="font-size:12px" data-act="mm-jump">跳转到「第二章 仪式」</button>
+    </div>
+    <div class="mono" style="font-size:11px;color:var(--muted);margin-top:12px">滚轮缩放 0.5–2.5x · 拖拽平移 · 点击含锚点节点跳转章节</div>
+  </div>`;
+}
+
+/* ---------- 5. 词云 ---------- */
+function viewWordcloud(isM){
+  if(S.state==='empty') return banner('内容过少，暂无词云','该文档关键词数量不足');
+  if(S.state==='loading') return skeleton(4,'正在计算关键词权重…');
+  if(S.state==='error') return banner('词云生成失败','请返回阅读后重试',`<button class="btn btn-ghost" data-act="retry">重试</button>`,true);
+  const W=S.wcScope==='all'
+    ? [['专注',44,600,'var(--primary)'],['仪式',32,600,'var(--primary)'],['注意力碎片',26,400,'var(--primary)'],
+       ['深度工作',22,400,'var(--secondary)'],['习惯',20,400,'var(--secondary)'],['约束',17,400,'var(--secondary)'],
+       ['心流',15,400,'var(--muted)'],['排版',14,400,'var(--muted)'],['界限',14,400,'var(--muted)']]
+    : [['仪式',40,600,'var(--primary)'],['约束',26,400,'var(--primary)'],['状态切换',20,400,'var(--secondary)'],
+       ['习惯',18,400,'var(--secondary)'],['信号',15,400,'var(--muted)']];
+  return `<div class="wc">
+    <div class="wc-toggle">
+      <span class="t ${S.wcScope==='all'?'on':''}" data-act="wc-all">全文</span>
+      <span class="t ${S.wcScope==='ch'?'on':''}" data-act="wc-ch">本章</span>
+    </div>
+    <div class="wc-cloud">${W.map(w=>`<span class="wc-w" title="权重 ${w[1]}" data-act="wc-jump"
+      style="font-size:${w[1]}px;font-weight:${w[2]};color:${w[3]}">${esc(w[0])}</span>`).join('')}</div>
+    <div class="mono" style="text-align:center;font-size:11px;color:var(--muted);margin-top:36px">字号 = 权重 · 悬停显示权重 · 点击定位段落</div>
+  </div>`;
+}
+
+/* ---------- 6. AI 键盘 ---------- */
+function viewKeyboard(isM){
+  if(S.state==='loading') return skeleton(5,'正在准备快捷操作…');
+  if(S.state==='error') return banner('快捷操作不可用','伴读能力未就绪，请先完成连接设置',
+    `<button class="btn btn-ghost" data-act="to-settings">前往设置</button>`,true);
+  if(S.state==='empty') return banner('当前段落为空','将光标移到有内容的段落后再唤起 AI 键盘');
+  return `<div class="kb">
+    <article class="ct" style="max-width:700px;font-size:18px">
+      <h2>第二章 专注的仪式</h2>
+      <p>深度的专注需要仪式感来守护，让注意力不被碎片信息侵入。</p>
+    </article>
+    <div class="kb-bar">
+      <span>作用域：当前段落 <span class="mute">（未选中文本，将对当前段落执行）</span></span>
+      <span class="mute">按 1–5 直选 · Esc 关闭</span>
+    </div>
+    <div class="kb-grid">
+      ${['通俗 1','逻辑 2','批判 3','术语 4','摘要 5'].map((k,i)=>`
+        <button class="kb-key" data-tpl-key="${['general','logic','critical','term','summary'][i]}">${k}</button>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ---------- 7. 设置 ---------- */
+function viewSettings(isM){
+  const bad = S.state==='error';
+  const running = S.state==='loading' || S.conn==='running';
+  const stateLine = bad?`<span class="state-err">! 连接失败</span>`
+    : running?`<span class="state-run">◐ 正在测试连接…</span>`
+    : `<span class="state-ok">● 连接正常</span>`;
+  return `<div class="panel">
+    <div class="panel-head"><h3>伴读连接设置</h3>
+      <button class="btn-text" data-act="to-library" aria-label="关闭">✕</button></div>
+    ${[['API 地址','https://api.openai.com/v1'],['API Key','••••••••••••••'],['模型','gpt-4o-mini']]
+      .map((f,i)=>{
+        const isModel=i===2;
+        return `<label class="field"><span class="lab">${f[0]}</span>
+          <input class="input" value="${f[1]}" style="${bad&&isModel?'border-color:var(--error)':''}">
+          ${bad&&isModel?`<span class="err">请填写模型名称，例如 gpt-4o-mini</span>`:''}</label>`;
+      }).join('')}
+    <div class="adv" data-act="adv">高级参数 ${S.advanced?'▾':'▸'}（温度 / 超时 / 重试）</div>
+    ${S.advanced?`<div class="adv-body">温度 <span class="mono">0.3</span> · 超时 <span class="mono">30s</span> · 重试 <span class="mono">3</span> 次（指数退避）</div>`:''}
+    <div class="panel-foot">
+      ${stateLine}
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" data-act="offline">跳过，使用离线摘要</button>
+        <button class="btn btn-primary" data-act="test-conn" ${running?'disabled':''}>${running?'测试中…':'保存并启用'}</button>
+      </div>
+    </div>
+    <div class="mono" style="font-size:11px;color:var(--muted);margin-top:12px">
+      API Key 仅存本机 ~/.ai-reader/config.json，不回显明文、不上云。</div>
+  </div>`;
+}
+
+/* ---------- 8. 标注 ---------- */
+function viewAnnotation(isM){
+  if(S.state==='empty') return banner('还没有任何标注','拖选正文后选择样式或存为边注，标注会出现在这里');
+  if(S.state==='loading') return skeleton(4,'正在载入标注…');
+  if(S.state==='error') return banner('标注载入失败','本地数据库读取异常，可重试',`<button class="btn btn-ghost" data-act="retry">重试</button>`,true);
+  return `<div class="anno-wrap">
+    <div class="anno-src">深度的专注需要 <span style="border-bottom:2px solid var(--accent)">仪式感</span> 来守护，
+      让<span class="hl">注意力碎片</span>不再侵入。</div>
+    <div class="style-bar">
+      <span>样式</span>
+      ${['下划线','波浪','加粗','斜体','删除线','半高亮','高亮'].map((s,i)=>`
+        <span class="style-chip ${i===0?'on':''}" data-style="${s}">${s}</span>`).join('')}
+      <span style="margin-left:8px">颜色</span>
+      ${[['#FEF08A','黄'],['#BBF7D0','绿'],['#BFDBFE','蓝'],['#FBCFE8','粉'],['#E9D5FF','紫'],['#FED7AA','橙']]
+        .map(c=>`<span class="swatch" style="background:${c[0]}" title="${c[1]}" data-swatch="${c[1]}"></span>`).join('')}
+    </div>
+    <div class="anno-list">
+      <div class="anno-h">标注 (${S.annotations.length})</div>
+      ${S.annotations.map(r=>`<div class="anno-row">
+        <span class="sty">${esc(r.style)}</span>
+        <span class="txt">${esc(r.text)}</span>
+        <span class="note">${esc(r.note)}</span>
+        <span class="by">${esc(r.by)}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+/* ---------- 9. 三端分发 ---------- */
+function viewPlatform(isM){
+  const P=[
+    ['Linux','主交付 · 桌面','已构建',
+     [['安装包','ai-reader_0.1.0_amd64.deb / .rpm / .AppImage'],['产物目录','output/app_desktop/linux/'],['数据目录','~/.ai-reader']]],
+    ['Windows','主交付 · 桌面','已构建',
+     [['安装包','ai-reader_0.1.0_x64.exe (NSIS)'],['产物目录','output/app_desktop/windows/'],['数据目录','%USERPROFILE%\\.ai-reader']]],
+    ['Android','主交付 · 移动','已构建',
+     [['安装包','ai-reader_0.1.0_release.apk + mapping.txt'],['产物目录','output/app_mobile/android/'],['数据目录','应用私有目录 (files/ai-reader)']]]
+  ];
+  if(S.state==='loading') return skeleton(4,'正在汇总三端构建状态…');
+  if(S.state==='error') return banner('构建状态读取失败','请检查 output/ 目录是否存在构建产物',`<button class="btn btn-ghost" data-act="retry">重试</button>`,true);
+  if(S.state==='empty') return banner('尚无任何构建产物','在目标平台执行构建脚本后，产物会汇总到这里');
+  return `<div class="plat-grid ${isM?'single':''}">
+    ${P.map(p=>`<div class="plat-card">
+      <h3>${p[0]}</h3><div class="sub">${p[1]} · <span style="color:var(--success)">● ${p[2]}</span></div>
+      <dl>${p[3].map(d=>`<dt>${d[0]}</dt><dd class="mono" style="font-size:11px">${esc(d[1])}</dd>`).join('')}</dl>
+    </div>`).join('')}
+  </div>
+  <div class="plat-note">统一 C-ABI FFI 信封 <span class="mono">ai_reader_invoke(action, payload_json)</span>：
+    三端共享同一 Rust 引擎与 SQLite/WAL 数据库；打包产物统一收敛于 <span class="mono">output/&lt;client&gt;/</span>，
+    移动端发布包强制配对混淆符号表。</div>`;
+}
+
+/* ---------- 导入对话框 ---------- */
+function viewImportDialog(){
+  const im=S.import;
+  return `<div class="veil" data-act="close-import">
+    <div class="dialog" data-stop="1" role="dialog" aria-modal="true" aria-labelledby="imp-title">
+      <h3 id="imp-title">导入本地文档</h3>
+      <div class="sub">支持 Markdown（.md）与纯文本（.txt）；PDF / EPUB 将在后续版本支持。</div>
+      <div class="drop ${im.over?'over':''}" id="drop">
+        ${im.importing?'正在解析并入库…':'把文件拖到这里，或点击选择文件'}
+      </div>
+      ${im.error?`<div style="font-size:12px;color:var(--error);margin-top:10px">! ${esc(im.error)}</div>`:''}
+      ${im.importing?`<div class="prog"><i style="width:${im.progress}%"></i></div>`:''}
+      <div class="dialog-acts">
+        <button class="btn btn-ghost" data-act="close-import">取消</button>
+        <button class="btn btn-primary" data-act="pick-file" ${im.importing?'disabled':''}>选择文件</button>
+      </div>
+    </div></div>`;
+}
+
+/* ===================== 交互绑定 ===================== */
+function bindSurface(isM){
+  const body=$('#frameBody');
+
+  // 划词
+  const art=$('#article');
+  if(art){
+    art.addEventListener('mouseup',()=>{
+      setTimeout(()=>{
+        const s=window.getSelection();
+        const txt=s?s.toString().trim():'';
+        if(!txt||txt.length<2){ S.sel=null; render(); return; }
+        let node=s.anchorNode; while(node&&node.nodeType!==1) node=node.parentNode;
+        const para=node&&node.closest?node.closest('p'):null;
+        const wrap=art.parentElement.getBoundingClientRect();
+        const r=s.getRangeAt(0).getBoundingClientRect();
+        const x=Math.max(0,Math.min(r.left-wrap.left, Math.max(0,wrap.width-300)));
+        const y=(para?para.getBoundingClientRect().bottom-wrap.top:r.bottom-wrap.top)+8;
+        const idx=para?Array.from(art.querySelectorAll('p')).indexOf(para):-1;
+        S.sel={text:txt,paraIndex:idx,x,y};
+        render();
+      },10);
+    });
+    // 点击段落 → 聚焦模式点亮
+    art.querySelectorAll('p').forEach((p,i)=>p.addEventListener('click',()=>{
+      if(!S.focus) return; S.sel=S.sel&&S.sel.paraIndex===i?S.sel:{text:'',paraIndex:i,x:0,y:0}; render();
+    }));
+  }
+}
+
+/* 统一动作委托（绑定在 #frame，覆盖内容层与浮层） */
+$('#frame').addEventListener('click',e=>{
+  const stop=e.target.closest('[data-stop]');
+  const el=e.target.closest('[data-act],[data-tpl],[data-tpl-key],[data-style],[data-swatch]');
+  if(!el) return;
+  if(stop && el.contains(stop)) return;   // 点击卡片/对话框内部时，仅触发其内部动作，不冒泡关闭
+
+  // 模板触发
+  const tpl = el.dataset.tpl || (el.dataset.tplKey==='summary'?'general':el.dataset.tplKey);
+  if(tpl){ startCompanion(tpl); return; }
+
+  if(el.dataset.style){ toast(`样式已切换为「${el.dataset.style}」`); return; }
+  if(el.dataset.swatch){ toast(`颜色已切换为「${el.dataset.swatch}」`); return; }
+
+  const act=el.dataset.act;
+  switch(act){
+    case 'open-import':  S.import={open:true,over:false,progress:0,importing:false,error:''}; render(); break;
+    case 'close-import': S.import.open=false; render(); break;
+    case 'pick-file':    startImport(); break;
+    case 'load-demo':    S.state='normal'; mark($('#seg-state'),'state','normal'); S.import.open=false; goto('reader'); toast('示例文章已导入《深度工作》'); break;
+    case 'open-book':    goto('reader'); toast('已打开《深度工作》'); break;
+    case 'to-library':   goto('library'); break;
+    case 'to-settings':  goto('settings'); break;
+    case 'reparse':      S.state='normal'; mark($('#seg-state'),'state','normal'); render(); toast('已重新解析'); break;
+    case 'retry':        S.state='normal'; mark($('#seg-state'),'state','normal'); render(); toast('已重试'); break;
+    case 'hl-sel':
+      if(!S.sel){ toast('请先在正文中拖选文字'); break; }
+      S.annotations.unshift({style:'高亮',text:S.sel.text.slice(0,24)+(S.sel.text.length>24?'…':''),note:'（无）',by:'人工'});
+      toast('已高亮并加入标注'); S.sel=null; render(); break;
+    case 'dismiss-card':
+      S.card=null; S.sel=null;
+      if(S.surface==='companion'){ S.surface='reader'; mark($('#seg-surface'),'surface','reader'); }
+      render(); break;
+    case 'save-note':    saveNote(); break;
+
+    case 'adv':          S.advanced=!S.advanced; render(); break;
+    case 'test-conn':    testConn(); break;
+    case 'offline':      S.conn='ok'; toast('已切换为离线启发式摘要（<10ms）'); render(); break;
+    case 'wc-all':       S.wcScope='all'; render(); break;
+    case 'wc-ch':        S.wcScope='ch'; render(); break;
+    case 'wc-jump':      toast('已定位到对应段落'); goto('reader'); break;
+    case 'mm-jump':      toast('已跳转到「第二章 仪式」'); goto('reader'); break;
+    case 'zoom-in':      toast('导图缩放 +0.25x'); break;
+    case 'zoom-out':     toast('导图缩放 -0.25x'); break;
+    case 'noop':         toast('将在系统浏览器中打开链接'); break;
+  }
+});
+
+/* 追问输入：回车提交 */
+$('#frame').addEventListener('keydown',e=>{
+  if(e.target && e.target.id==='fu' && e.key==='Enter'){
+    const v=e.target.value.trim();
+    if(!v) return;
+    e.target.value='';
+    askFollowup(v);
+  }
+});
+
+/* ===================== 行为：导入 / 伴读 / 标注 ===================== */
+function startImport(){
+  S.import.importing=true; S.import.progress=0; S.import.error=''; render();
+  const timer=setInterval(()=>{
+    S.import.progress=Math.min(100,S.import.progress+7);
+    const bar=document.querySelector('.prog > i'); if(bar) bar.style.width=S.import.progress+'%';
+    if(S.import.progress>=100){
+      clearInterval(timer);
+      S.import.open=false; S.import.importing=false;
+      S.state='normal'; mark($('#seg-state'),'state','normal');
+      goto('reader'); toast('导入完成：解析入库并可开始阅读');
+    }
+  },90);
+}
+function startCompanion(tpl){
+  S.card=newCard(tpl);
+  S.card.streaming=true;
+  S.surface='companion';
+  mark($('#seg-surface'),'surface','companion');
+  $('#winTitle').textContent='AI 认知伴读';
+  render();
+  const t0=Date.now();
+  const full=TEMPLATES[tpl]||TEMPLATES.general;
+  let i=0;
+  const step=()=>{
+    if(!S.card||S.card.template!==tpl){ return; }
+    if(!S.card.ttft){
+      S.card.ttft=Math.max(180,Math.min(760,Date.now()-t0));
+      const h=document.querySelector('.card-head .l span');
+      if(h) h.textContent=`${TPL_LABEL[tpl]} · TTFT ${S.card.ttft}ms`;
+    }
+    if(i>=full.length){ S.card.streaming=false; render(); return; }
+    i+=2; S.card.text=full.slice(0,i); renderCardStream();
+    setTimeout(step,16);
+  };
+  setTimeout(step,260);
+}
+function askFollowup(q){
+  if(!S.card){ return; }
+  const question = (q&&String(q).trim()) || '这段和第 3 章的界线理论有什么关系？';
+  const a='第 3 章把"界线"定义为可被他人识别的状态标记，与本段的"仪式感"同属状态切换机制：'+
+          '前者对外，后者对内。两者都靠重复的固定动作降低切换成本。';
+  let i=0; S.card.streaming=true; S.card.followup.push({q:question,a:''});
+  renderCardStream();
+  const step=()=>{
+    if(!S.card){ return; }
+    const last=S.card.followup[S.card.followup.length-1];
+    if(i>=a.length){ S.card.streaming=false; renderCardStream(); return; }
+    i+=3; last.a=a.slice(0,i); renderCardStream();
+    setTimeout(step,16);
+  };
+  setTimeout(step,220);
+}
+function saveNote(){
+  if(!S.card) return;
+  if(S.card.saved){ toast('已归档为边注'); return; }
+  if(!S.card.text){ toast('暂无可归档内容'); return; }
+  S.card.saved=true;
+  const head=S.card.text.split('\n')[0].slice(0,22);
+  S.annotations.unshift({style:'边注', text:(S.sel&&S.sel.text?S.sel.text.slice(0,22)+'…':'AI 伴读结论'),
+                         note:head+(S.card.text.length>22?'…':''), by:'AI'});
+  toast('已存为边注'); render();
+}
+function testConn(){
+  S.conn='running'; S.state='loading'; mark($('#seg-state'),'state','loading'); render();
+  setTimeout(()=>{
+    S.conn='ok'; S.state='normal'; mark($('#seg-state'),'state','normal');
+    render(); toast('连接正常，已保存并启用');
+  },1200);
+}
+
+/* ===================== 拖拽导入（全局绑定一次，避免重复监听） ===================== */
+document.addEventListener('dragover',e=>{ if(!S.import.open) return; e.preventDefault();
+  S.import.over=true; const d=$('#drop'); if(d) d.classList.add('over'); });
+document.addEventListener('dragleave',e=>{ if(!S.import.open) return;
+  if(e.relatedTarget) return; S.import.over=false; const d=$('#drop'); if(d) d.classList.remove('over'); });
+document.addEventListener('drop',e=>{
+  if(!S.import.open) return; e.preventDefault();
+  S.import.over=false; const d=$('#drop'); if(d) d.classList.remove('over');
+  const name=(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]&&e.dataTransfer.files[0].name)||'';
+  if(/\.(pdf|epub)$/i.test(name)){ S.import.error='当前版本暂不支持 PDF / EPUB，请先转换为 Markdown 或 TXT'; render(); return; }
+  startImport();
+});
+
+/* ===================== 初始化 ===================== */
+goto('library');
+</script>
+</body>
+</html>

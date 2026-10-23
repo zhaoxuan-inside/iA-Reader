@@ -1,0 +1,13 @@
+# hs-dev-skill 工程治理机制启用控制配置 (Governance Capabilities Toggle)
+# 用于按需开启/禁用特定治理功能模式，支持灵活插拔
+version: "1.0"
+
+features:
+  version_control: true   # 四段式多级版本控制与自主 MMddHHmmss 时间戳生成
+  env_and_secrets: true   # 环境配置隔离与敏感机密凭据防泄露扫描
+  supply_chain_security: true   # 软件供应链安全与依赖锁文件强一致校验
+  cicd_and_artifacts: false  # CI/CD 自动化流水线与交付制品防伪 SBOM (不启用)
+  observability_telemetry: false  # 可观测性与运行时遥测 (/livez /readyz 探针与监控) (不启用)
+  data_resilience_dr: false  # 数据韧性与容灾回滚机制 (RPO/RTO 指标与双向迁移) (不启用)
+  security_privacy: true   # 安全防御矩阵与个人敏感信息 (PII) 脱敏合规
+  agent_guardrails: true   # Agent 执行安全沙箱与高危破坏命令拦截护栏

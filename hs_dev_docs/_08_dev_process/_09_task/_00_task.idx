@@ -1,2 +1,0 @@
-{"version": "1.0", "category": "task_active", "root": "_09_task"}
-{"id": "task_18_deb_metadata", "title": "清零遗留③：deb 打包元数据修正（Depends/Description 对齐 Flutter 桌面应用）", "path": "_02_task_detail/_01_task_18_deb_metadata/_00_task_detail.md", "status": "READY", "digest": "633321ed"}
