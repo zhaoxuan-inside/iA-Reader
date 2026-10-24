@@ -171,13 +171,39 @@ impl SqliteStorage {
 
     pub fn save_book(&self, meta: &BookMeta) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
-        conn.execute(
+        // RETURNING id：upsert 走 UPDATE 臂时不推进 last_insert_rowid()，
+        // 陈旧 id 会让派生数据挂到不存在的 book 上（FOREIGN KEY 失败或脏写）
+        let id: i64 = conn.query_row(
             "INSERT INTO book_meta (title, author, file_path, file_hash, format, total_pages, read_progress, description, is_del, version)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 1)
-             ON CONFLICT(file_path) DO UPDATE SET title=?1, author=?2, updated_at=CURRENT_TIMESTAMP",
+             ON CONFLICT(file_path) DO UPDATE SET title=?1, author=?2, updated_at=CURRENT_TIMESTAMP
+             RETURNING id",
             params![meta.title, meta.author, meta.file_path, meta.file_hash, meta.format, meta.total_pages, meta.read_progress, meta.description],
+            |row| row.get(0),
         )?;
-        Ok(conn.last_insert_rowid())
+        Ok(id)
+    }
+
+    pub fn find_book_id_by_hash(&self, file_hash: &str) -> Result<Option<i64>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id FROM book_meta WHERE file_hash = ?1 AND is_del = 0 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(params![file_hash])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some(row.get(0)?))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// 重建派生数据前清空旧章节/句子/关键词/关系/导图；批注与伴读会话按 book_id 保留
+    pub fn purge_book_derived_data(&self, book_id: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        for table in ["book_section", "sentence_node", "keyword_node", "keyword_relation", "mindmap_node"] {
+            conn.execute(&format!("DELETE FROM {} WHERE book_id = ?1", table), params![book_id])?;
+        }
+        Ok(())
     }
 
     pub fn get_book(&self, id: i64) -> Result<Option<BookMeta>> {
@@ -240,13 +266,25 @@ impl SqliteStorage {
         Ok(())
     }
 
-    pub fn save_sections(&self, sections: &[BookSection]) -> Result<()> {
+    /// 返回按入参顺序落库后的真实章节 id（sentence_node.section_id 外键需要）
+    pub fn save_sections(&self, sections: &[BookSection]) -> Result<Vec<i64>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare("INSERT INTO book_section (book_id, section_index, title, parent_id, start_page, end_page, content, is_del, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1)")?;
+        let mut ids = Vec::with_capacity(sections.len());
         for s in sections {
             stmt.execute(params![s.book_id, s.section_index, s.title, s.parent_id, s.start_page, s.end_page, s.content])?;
+            ids.push(conn.last_insert_rowid());
         }
-        Ok(())
+        Ok(ids)
+    }
+
+    pub fn count_sections(&self, book_id: i64) -> Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM book_section WHERE book_id = ?1 AND is_del = 0",
+            params![book_id],
+            |row| row.get(0),
+        )
     }
 
     pub fn get_sections(&self, book_id: i64) -> Result<Vec<BookSection>> {
@@ -312,8 +350,12 @@ impl SqliteStorage {
         Ok(res)
     }
 
+    /// 覆盖式保存：同一 book 重复抽取时先清旧关键词，防止每次调用累积
     pub fn save_keywords(&self, keywords: &[KeywordNode]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        if let Some(first) = keywords.first() {
+            conn.execute("DELETE FROM keyword_node WHERE book_id = ?1", params![first.book_id])?;
+        }
         let mut stmt = conn.prepare("INSERT INTO keyword_node (book_id, word, level, tfidf_score, textrank_score, frequency, is_del, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1)")?;
         for k in keywords {
             stmt.execute(params![k.book_id, k.word, k.level, k.tfidf_score, k.textrank_score, k.frequency])?;
@@ -347,8 +389,12 @@ impl SqliteStorage {
         Ok(res)
     }
 
+    /// 覆盖式保存：同一 book 重复构图时先清旧关系边，防止每次调用累积
     pub fn save_keyword_relations(&self, relations: &[KeywordRelation]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        if let Some(first) = relations.first() {
+            conn.execute("DELETE FROM keyword_relation WHERE book_id = ?1", params![first.book_id])?;
+        }
         let mut stmt = conn.prepare("INSERT INTO keyword_relation (book_id, source_word_id, target_word_id, co_occurrence_count, pmi_score, weight, is_del, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, 1)")?;
         for r in relations {
             stmt.execute(params![r.book_id, r.source_word_id, r.target_word_id, r.co_occurrence_count, r.pmi_score, r.weight])?;
@@ -382,8 +428,12 @@ impl SqliteStorage {
         Ok(res)
     }
 
+    /// 覆盖式保存：同一 book 重复生成导图时先清旧节点，防止每次调用累积
     pub fn save_mindmap_nodes(&self, nodes: &[MindmapNode]) -> Result<()> {
         let conn = self.conn.lock().unwrap();
+        if let Some(first) = nodes.first() {
+            conn.execute("DELETE FROM mindmap_node WHERE book_id = ?1", params![first.book_id])?;
+        }
         let mut stmt = conn.prepare("INSERT INTO mindmap_node (book_id, parent_id, title, section_id, level, sort_order, keywords_json, is_del, version) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1)")?;
         for n in nodes {
             stmt.execute(params![n.book_id, n.parent_id, n.title, n.section_id, n.level, n.sort_order, n.keywords_json])?;

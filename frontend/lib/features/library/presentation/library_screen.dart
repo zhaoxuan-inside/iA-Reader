@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/theme/reader_theme.dart';
 import '../../../core/ffi/reader_engine_bridge.dart';
@@ -38,7 +39,7 @@ class LibraryBookItem {
 /// 独立文件库与书架视图 (LibraryScreen)
 /// 对标 iA Writer 经典的文件库模式 (Library Mode):
 /// 1. 专注且克制的文件浏览与组织，不干扰阅读视图；
-/// 2. 支持导入本地文档 (MD / EPUB / TXT / PDF)；
+/// 2. 支持导入本地文档 (MD / TXT，MVP 冻结范围；PDF/EPUB 于 Phase 2 接入)；
 /// 3. 点击书籍即刻切换进入沉浸阅读世界 (Pure Reader Mode)。
 class LibraryScreen extends StatefulWidget {
   final ReaderEngineBridge bridge;
@@ -89,13 +90,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('导入本地文档 (MD / EPUB / TXT / PDF)', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold)),
+          title: const Text('导入本地文档 (MD / TXT)', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold)),
           content: TextField(
             controller: controller,
             autofocus: true,
             decoration: const InputDecoration(
               labelText: '输入文档绝对路径',
-              hintText: '如: /home/user/Documents/book.epub',
+              hintText: '如: /home/user/Documents/notes.md',
             ),
           ),
           actions: [
@@ -128,6 +129,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       },
     );
   }
+
+  /// 运行时未接入真实引擎（mock 通道）时向用户明示，避免把内置演示数据当真；
+  /// flutter test 环境不展示，保持 golden/布局测试基线稳定
+  bool get _showMockNotice =>
+      widget.bridge.usesMockEngine &&
+      Platform.environment['FLUTTER_TEST'] != 'true';
 
   @override
   Widget build(BuildContext context) {
@@ -267,6 +274,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
 
               const SizedBox(height: 16.0),
+
+              // mock 通道明示条（运行时未加载真实引擎动态库）
+              if (_showMockNotice)
+                Padding(
+                  padding: const EdgeInsets.only(left: 32.0, right: 32.0, bottom: 12.0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                    decoration: BoxDecoration(
+                      color: surfaceBg,
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: Border.all(color: borderColor, width: 0.8),
+                    ),
+                    child: Text(
+                      '演示模式：未检测到 AI Reader 引擎动态库（libreader_core），当前展示内置示例数据。请先构建或安装原生引擎。',
+                      style: TextStyle(fontSize: 12.0, color: textSecondary),
+                    ),
+                  ),
+                ),
 
               // 文档列表
               Expanded(

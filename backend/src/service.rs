@@ -44,10 +44,18 @@ impl ReaderService {
             _ => self.doc_parse_fallback(file_path),
         };
 
-        let mut doc = match parsed {
-            Ok(d) => d,
-            Err(_) => self.doc_parse_fallback(file_path)?,
-        };
+        // 解析失败必须显式上报（未知扩展名已在上行走 txt 兜底）。
+        // 此前 Err(_) 被吞进 txt fallback，是 PDF/EPUB 假正文静默入库的根源。
+        let mut doc = parsed?;
+
+        // FEAT-001 去重：同内容文档（哈希一致）禁止重复入库
+        if let Some(existing) = self
+            .storage
+            .find_book_id_by_hash(&doc.meta.file_hash)
+            .map_err(|e| e.to_string())?
+        {
+            return Err(format!("该文档已在书库中（book_id: {}），重复导入已拦截", existing));
+        }
 
         // 导入文档稳定副本（ADR_005）：源文件移动/删除不再破坏书库；失败降级沿用原路径
         let source_path = doc.meta.file_path.clone();
@@ -72,15 +80,35 @@ impl ReaderService {
 
         doc.meta.id = book_id;
 
+        // 同路径换内容再导（upsert 命中已有行）：派生数据整体重建，防止新旧章节混杂；
+        // 批注与伴读会话按 book_id 保留
+        self.storage
+            .purge_book_derived_data(book_id)
+            .map_err(|e| format!("Failed to purge derived data: {}", e))?;
+
         for s in &mut doc.sections {
             s.book_id = book_id;
         }
-        let _ = self.storage.save_sections(&doc.sections);
+        let section_ids = self
+            .storage
+            .save_sections(&doc.sections)
+            .map_err(|e| format!("Failed to save sections: {}", e))?;
+        for (s, &sid) in doc.sections.iter_mut().zip(&section_ids) {
+            s.id = sid;
+        }
 
+        // 句子按 1-based 章节序号占位，此处回填真实章节 id——
+        // AUTOINCREMENT 下章节 id 全局递增，占位符只对库里第一本书碰巧成立
         for sent in &mut doc.sentences {
             sent.book_id = book_id;
+            let pos = (sent.section_id - 1).max(0) as usize;
+            if pos < section_ids.len() {
+                sent.section_id = section_ids[pos];
+            }
         }
-        let _ = self.storage.save_sentences(&doc.sentences);
+        self.storage
+            .save_sentences(&doc.sentences)
+            .map_err(|e| format!("Failed to save sentences: {}", e))?;
 
         self.doc_parse_metrics(start.elapsed().as_secs_f64() * 1000.0, doc.sentences.len());
         self.doc_parse_recall(book_id);

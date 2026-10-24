@@ -162,6 +162,8 @@ class ReaderEngineBridge {
   }
 
   /// 调用底层六元组 action：原生 FFI 在独立 isolate 中执行，避免秒级 LLM 调用阻塞 UI。
+  /// 真实引擎链路上的失败必须显式上报（错误信封），禁止静默回退 mock——
+  /// 此前 catch 后落入 _mockFallback，契约断裂被掩盖为"功能正常"。
   Future<InvokeEnvelope> invoke(String action, Map<String, dynamic> payload) async {
     final payloadJson = jsonEncode(payload);
     final libPath = _libraryPath;
@@ -172,14 +174,23 @@ class ReaderEngineBridge {
             await Isolate.run(() => _nativeInvokeSync(libPath, action, payloadJson));
         final Map<String, dynamic> parsed = jsonDecode(resultStr);
         return InvokeEnvelope.fromJson(parsed);
-      } catch (_) {
-        // isolate / 原生调用异常时回退到启发式引擎
+      } catch (e) {
+        return InvokeEnvelope(
+          code: 50002,
+          message: '引擎调用失败: $e',
+          data: {},
+          metrics: {'duration_ms': 0},
+        );
       }
     }
 
-    // 离线 / 启发式回退 (Deterministic Local Fallback)
+    // 未检测到动态库（离线开发 / flutter test 环境）：进程内确定性 mock 通道
     return _mockFallback(action, payload);
   }
+
+  /// 当前是否运行在进程内 mock 通道（未加载真实引擎动态库）。
+  /// 真实运行时该值为 true 意味着用户看到的是内置演示数据，UI 应明示。
+  bool get usesMockEngine => _libraryPath == null;
 
   /// mock 确定性分析生成（ask 与流式 start 共用）
   String _mockAnalysis(String tpl, String text, String prompt) {
@@ -395,7 +406,7 @@ class ReaderEngineBridge {
               'id': 2,
               'title': '深度学习与认知推理实战指南',
               'author': 'AI Lab',
-              'format': 'epub',
+              'format': 'txt',
               'total_pages': 120,
               'sections_count': 12,
             },

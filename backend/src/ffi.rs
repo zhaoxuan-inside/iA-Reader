@@ -162,7 +162,18 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         }
         "doc.list" => {
             let books = service_guard.storage.list_books().map_err(|e| e.to_string())?;
-            Ok(serde_json::to_value(books).map_err(|e| e.to_string())?)
+            // FFI 契约（前端 LibraryScreen._loadBooks）：data 必须是 {books:[...]} 信封 Map——
+            // 裸数组会令 Dart 侧 InvokeEnvelope 解析抛错并静默回退 mock 假书单。
+            let mut payload = Vec::with_capacity(books.len());
+            for b in &books {
+                let mut v = serde_json::to_value(b).map_err(|e| e.to_string())?;
+                if let Some(obj) = v.as_object_mut() {
+                    let count = service_guard.storage.count_sections(b.id).unwrap_or(0);
+                    obj.insert("sections_count".to_string(), json!(count));
+                }
+                payload.push(v);
+            }
+            Ok(json!({ "books": payload }))
         }
         "doc.get" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -208,11 +219,17 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
                 "sections": section_payloads
             }))
         }
-        "nlp.extract_keywords" => {
+        // 兼容双名：前端唯一下单名 nlp.keyword_extract；引擎规范名 nlp.extract_keywords
+        "nlp.keyword_extract" | "nlp.extract_keywords" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let top_n = val.get("top_n").and_then(|v| v.as_u64()).unwrap_or(30) as usize;
             let keywords = service_guard.nlp_keyword_extract(book_id, top_n)?;
-            Ok(json!({ "keywords": keywords }))
+            // FFI 契约（前端 KeywordTagItem / 词云字号映射）：word/score/count
+            let items: Vec<Value> = keywords
+                .iter()
+                .map(|k| json!({ "word": k.word, "score": k.tfidf_score, "count": k.frequency }))
+                .collect();
+            Ok(json!({ "keywords": items }))
         }
         "nlp.build_graph" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -227,7 +244,20 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         "mindmap.generate" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let nodes = service_guard.mindmap_generate(book_id)?;
-            Ok(json!({ "nodes": nodes }))
+            // FFI 契约（前端 MindmapNodeItem）：label/depth（引擎内为 title/level）
+            let items: Vec<Value> = nodes
+                .iter()
+                .map(|n| {
+                    json!({
+                        "id": n.id,
+                        "label": n.title,
+                        "depth": n.level,
+                        "parent_id": n.parent_id,
+                        "section_id": n.section_id,
+                    })
+                })
+                .collect();
+            Ok(json!({ "nodes": items }))
         }
         "annotation.save" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
