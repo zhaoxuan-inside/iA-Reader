@@ -120,6 +120,17 @@ class ReaderEngineBridge {
       return customPath;
     }
 
+    // 显式注入优先（GUI e2e / integration_test / 高级用户）：
+    // AI_READER_LIB 指定引擎动态库绝对路径，即使在 FLUTTER_TEST 下也生效——
+    // integration_test 以真实异步事件循环运行，可直连真引擎驱动真界面
+    final envLib = Platform.environment['AI_READER_LIB'];
+    if (envLib != null && File(envLib).existsSync()) {
+      try {
+        ffi.DynamicLibrary.open(envLib);
+        return envLib;
+      } catch (_) {}
+    }
+
     // flutter test 环境不做原生库自动发现：
     // 1) 测试须确定性走内存 mock 通道（hermetic，不依赖机器上是否安装了真库）；
     // 2) Isolate.run 为真实异步，在测试 FakeAsync 下永不完成，会令 pumpAndSettle 超时。

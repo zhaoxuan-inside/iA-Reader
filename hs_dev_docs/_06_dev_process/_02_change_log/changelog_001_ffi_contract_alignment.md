@@ -75,3 +75,32 @@
 - 阻塞 `ai.companion_ask` 的离线卡不带 `【离线模式】` 前缀（流式路径带）：老引擎兼容路径的引擎间文案漂移，前端主路径不受影响，建议统一。
 - Python 引擎配置读取仍走旧版位置（其自身无 config.save 动作，暂无实际影响）：双引擎契约单源化的后续切片处理。
 - GUI 层 e2e（Flutter integration_test 驱动真 .so）：需桌面构建工具链（clang/cmake/ninja/libgtk-3-dev），待环境具备后补。
+
+---
+
+# 变更记录：CFX-003 版本对齐 0.0.7 + GUI e2e 注入通道（构建/打包待工具链）
+
+- **日期**：2026-10-25
+- **intent / change_size / work_mode**：`FIX` / `S` / `IMPLEMENT`
+- **触发**：开发者确认可执行 sudo 命令，推进 GUI 层 e2e 与重打包收口。
+
+## 已完成
+
+1. **版本对齐 0.0.7**：VERSION / pubspec(0.0.7+7) / app_config.json / deb control / rpm spec / PKGBUILD 六处统一（此前 0.0.5 与 0.0.6 漂移）。
+2. **桥接注入通道**（`reader_engine_bridge.dart`）：新增 `AI_READER_LIB` 环境变量——显式指定引擎动态库路径，优先于 FLUTTER_TEST 强制 mock。用途：integration_test 以真实异步事件循环直连真引擎；高级用户/调试亦可显式指库。
+3. **GUI 层 e2e 用例落地**（`frontend/integration_test/rust_engine_app_test.dart`）：真 .so 驱动真实应用——引擎绑定断言 → 导入真书 → 启动 `AIReaderApp` → 工作台渲染真书标题/正文（mock 默认标题必须被替换）→ 返回书库渲染真 `doc.list`。隔离与运行说明见文件头注释。
+4. pubspec 新增 `integration_test` SDK 依赖。
+
+## 回归证据
+
+- `flutter test`：57/57（桥接改动后全量回归）
+- `flutter analyze`：新增文件仅 0 error / 0 warning（1 处 info 已修）
+
+## 待办（阻塞于本机桌面构建工具链安装）
+
+- `flutter build linux --release` 全量构建
+- GUI integration_test 实跑（`AI_READER_LIB` + 隔离 `AI_READER_HOME` + `no_proxy`）
+- 重打 0.0.7 deb 并校验内含新引擎 .so 哈希
+- 用户 `sudo dpkg -i` 后跑装机态 e2e（`test_installed_workbench_e2e.py`）
+
+> 2026-10-25 备注：开发者首轮 apt 安装未落到本机（dpkg -l 证实 clang/cmake/ninja-build/libgtk-3-dev 均未安装），已请其重跑并回贴输出。
