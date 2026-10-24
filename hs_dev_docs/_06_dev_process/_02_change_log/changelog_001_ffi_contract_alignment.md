@@ -37,3 +37,41 @@
 - Python 测试套件共享真实 `~/.ai-reader` DB 且偶发 Bus error：既有隔离缺陷，建议各套件改用临时 `AI_READER_HOME`。
 - Flutter tester 在代理环境需 `no_proxy=127.0.0.1,localhost`（本机环境注入 `http_proxy` 会劫持 tester 本地取内核请求，表现为段错误）。
 - 伴读轮询无取消、全局 Mutex 串行化、中文单字分词质量：P2 遗留（见探索报告）。
+
+---
+
+# 变更记录：CFX-002 Rust 引擎全旅程 e2e 补齐 + 配置读写路径错位修复
+
+- **日期**：2026-10-25
+- **intent / change_size / work_mode**：`FIX` / `S` / `IMPLEMENT`
+- **触发**：开发者要求补齐真引擎端到端覆盖（GUI 层 e2e 受限于桌面工具链，先补引擎级全旅程）。
+
+## 新增
+
+`test/_00_e2e/test_rust_engine_full_flow_e2e.py`（5 用例，ctypes 驱动真实 .so，与 Python 引擎 e2e 形成双引擎对偶）：
+
+1. 阅读旅程数据就绪：书库章节数 / 段落句子绑定真实章节 / 导图节点带 section_id / 词云非空；
+2. 划词伴读双路径：流式 start→poll 收敛且空密钥标记 `offline=true`、离线卡带 `【离线模式】` 前缀（前端降级提示契约）+ 兜底阻塞 ask；
+3. 批注全生命周期 save→list→update→list→delete→list；
+4. 配置三通道：默认加载→部分保存→读回一致→落盘 `<base>/config/llm_config.json`；
+5. 跨进程持久化：独立子进程（模拟重启）读回书库/批注/配置（探针走文件通道，规避引擎日志混流）。
+
+隔离纪律：`AI_READER_HOME` + `HOME` 双重指向临时目录，不触碰宿主机真实数据。
+
+## 顺带修复（e2e 首跑即抓到的真缺陷）
+
+`LlmConfig::load()` 读旧版位置 `$HOME/.config/ai-reader/llm_config.json`，而 `config.save` 写集中存储位置 `<base>/config/llm_config.json`——**前端设置保存后重载读不回，LLM 密钥/参数重启即丢**（默认安装同样错位）。修复：load 优先读集中存储位置，旧位置仅作回退（保住升级用户已存密钥）。修复前该 e2e 用例为红，修复后转绿。
+
+## 回归证据
+
+| 套件 | 结果 |
+|---|---|
+| `cargo test` | 34/34 |
+| 新增 Rust 引擎全旅程 e2e | 5/5（配置用例先红后绿） |
+| FFI 契约测试 | 7/7 |
+
+## 遗留与登记（新增）
+
+- 阻塞 `ai.companion_ask` 的离线卡不带 `【离线模式】` 前缀（流式路径带）：老引擎兼容路径的引擎间文案漂移，前端主路径不受影响，建议统一。
+- Python 引擎配置读取仍走旧版位置（其自身无 config.save 动作，暂无实际影响）：双引擎契约单源化的后续切片处理。
+- GUI 层 e2e（Flutter integration_test 驱动真 .so）：需桌面构建工具链（clang/cmake/ninja/libgtk-3-dev），待环境具备后补。

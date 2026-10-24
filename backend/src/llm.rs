@@ -101,12 +101,21 @@ impl LlmConfig {
         serde_json::from_value(Value::Object(merged)).unwrap_or_default()
     }
 
-    /// 真实配置解析：用户配置 `~/.config/ai-reader/llm_config.json`，
-    /// 默认配置 `<workspace>/config/default_llm_config.json`（仅存在于开发/源码环境）。
+    /// 真实配置解析：用户配置 `<base>/config/llm_config.json`（与 config.save 写入路径
+    /// 同源，ADR_005 集中存储）；旧版位置 `~/.config/ai-reader/llm_config.json` 仅作回退，
+    /// 保住升级用户已存密钥。默认配置 `<workspace>/config/default_llm_config.json`
+    /// 仅存在于开发/源码环境。
+    /// 此前 load 读旧版位置而 save 写集中存储位置——设置保存后重载读不回（重启丢配置）。
     pub fn load() -> LlmConfig {
-        let user = std::env::var("HOME").ok().map(|h| {
+        let base_cfg = crate::paths::llm_config_path(&crate::paths::base_dir());
+        let legacy = std::env::var("HOME").ok().map(|h| {
             Path::new(&h).join(".config").join("ai-reader").join("llm_config.json")
         });
+        let user = if base_cfg.exists() {
+            Some(base_cfg)
+        } else {
+            legacy.filter(|p| p.exists())
+        };
         let default_path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("config")
