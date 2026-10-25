@@ -55,6 +55,9 @@ void main() {
 
     await tester.tap(find.text('波浪线'));
     await tester.pumpAndSettle();
+    // 两维交互（验收定稿）：样式仅选择，显式点「应用」提交组合
+    await tester.tap(find.byKey(const ValueKey('palette_apply')));
+    await tester.pumpAndSettle();
 
     final editables =
         tester.allElements.map((e) => e.renderObject).whereType<RenderEditable>();

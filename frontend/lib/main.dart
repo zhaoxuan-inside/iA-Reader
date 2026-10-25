@@ -216,6 +216,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   bool _isNoteEditorOpen = false;
   bool _isAnnotationManagerOpen = false;
   String _activeAnnotationColor = '#CA8A04';
+  // 面板选中样式(验收:样式/颜色两维独立选择,「应用」提交组合)
+  AnnotationStyle _activeAnnotationStyle = AnnotationStyle.highlight;
 
   // 独立 AI 键盘（task_14）：Cmd+K / 顶栏按钮唤起
   bool _isAiKeyboardOpen = false;
@@ -1277,10 +1279,13 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           top: _selectionPosition?.dy ?? 120.0,
                           left: _selectionPosition?.dx ?? 120.0,
                           child: AnnotationPalette(
+                            selectedStyle: _activeAnnotationStyle,
                             selectedColorHex: _activeAnnotationColor,
                             onColorSelected: (hex) =>
                                 setState(() => _activeAnnotationColor = hex),
-                            onStyleSelected: (style, colorHex) =>
+                            onStyleSelected: (style) =>
+                                setState(() => _activeAnnotationStyle = style),
+                            onApply: (style, colorHex) =>
                                 _applyAnnotation(style, colorHex),
                             onNoteRequested: () => setState(() {
                               _isAnnotationPaletteOpen = false;

@@ -4,22 +4,26 @@ import '../../../core/theme/reader_theme.dart';
 import '../domain/annotation_item.dart';
 import '../domain/annotation_span_builder.dart';
 
-/// 标注面板（task_13 D3）：划词后经胶囊「标注」按钮展开。
-/// 分组样式按钮（背景/线条/字型）+ 调色板 + 批注入口；
-/// 点样式即以当前选中颜色应用于选区并收起。
+/// 标注面板（验收定稿交互）：样式与颜色是两个独立维度——
+/// 分别点选样式按钮与颜色圆点（均为选择态，不立即应用），
+/// 组合确认后点「应用」提交（onApply 携带 样式×颜色 组合）。
 /// iA 语言：文字按钮、按钮文案以自身样式预览渲染，零 emoji。
 class AnnotationPalette extends StatelessWidget {
+  final AnnotationStyle selectedStyle;
   final String selectedColorHex;
+  final ValueChanged<AnnotationStyle> onStyleSelected;
   final ValueChanged<String> onColorSelected;
-  final void Function(AnnotationStyle style, String colorHex) onStyleSelected;
+  final void Function(AnnotationStyle style, String colorHex) onApply;
   final VoidCallback onNoteRequested;
   final VoidCallback onClose;
 
   const AnnotationPalette({
     super.key,
+    required this.selectedStyle,
     required this.selectedColorHex,
-    required this.onColorSelected,
     required this.onStyleSelected,
+    required this.onColorSelected,
+    required this.onApply,
     required this.onNoteRequested,
     required this.onClose,
   });
@@ -31,8 +35,8 @@ class AnnotationPalette extends StatelessWidget {
     final borderColor = isDark ? ReaderTheme.darkBorderSubtle : ReaderTheme.lightBorderSubtle;
     final textColor = isDark ? ReaderTheme.darkTextPrimary : ReaderTheme.lightTextPrimary;
     final textSecondary = isDark ? ReaderTheme.darkTextSecondary : ReaderTheme.lightTextSecondary;
+    final accentColor = isDark ? ReaderTheme.darkAccentFocus : ReaderTheme.lightAccentFocus;
 
-    // 半高亮预览与正文渲染同构（背景带下半，经共享构造器）
     TextStyle previewStyle(AnnotationStyle style) {
       final color = annotationColorFromHex(selectedColorHex);
       final base = TextStyle(
@@ -88,7 +92,7 @@ class AnnotationPalette extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8.0),
-            // 分组样式行
+            // 分组样式行（选择态：点选即切换当前样式，不立即应用）
             for (final group in annotationStyleGroups.entries) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -103,14 +107,32 @@ class AnnotationPalette extends StatelessWidget {
                       spacing: 6.0,
                       runSpacing: 4.0,
                       children: group.value
-                          .map((s) => GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => onStyleSelected(s, selectedColorHex),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
-                                  child: Text(s.label, style: previewStyle(s)),
+                          .map((s) {
+                            final selected = s == selectedStyle;
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => onStyleSelected(s),
+                              child: Container(
+                                key: ValueKey('palette_style_${s.key}'),
+                                padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
+                                decoration: BoxDecoration(
+                                  // 选中态：强调色下边线（iA 极简指示）
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: selected ? accentColor : Colors.transparent,
+                                      width: 2.0,
+                                    ),
+                                  ),
                                 ),
-                              ))
+                                child: Text(
+                                  s.label,
+                                  style: previewStyle(s).copyWith(
+                                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                                  ),
+                                ),
+                              ),
+                            );
+                          })
                           .toList(),
                     ),
                   ),
@@ -119,7 +141,7 @@ class AnnotationPalette extends StatelessWidget {
               const SizedBox(height: 4.0),
             ],
             const Divider(height: 14.0),
-            // 调色板行
+            // 调色板行（选择态：点选即切换当前颜色，与样式自由组合）
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -153,28 +175,61 @@ class AnnotationPalette extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 6.0),
-            // 批注入口
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: onNoteRequested,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 7.0),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: Border.all(color: borderColor, width: 0.8),
+            const SizedBox(height: 10.0),
+            // 组合提交行：「应用」提交当前 样式×颜色 组合；「批注」转入边注编辑
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => onApply(selectedStyle, selectedColorHex),
+                    child: Container(
+                      key: const ValueKey('palette_apply'),
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 7.0),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8.0),
+                        border: Border.all(color: accentColor, width: 1.0),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '应用',
+                          style: TextStyle(
+                              fontFamily: 'iA Writer Mono',
+                              fontSize: 12.0,
+                              fontWeight: FontWeight.w600,
+                              color: accentColor,
+                              letterSpacing: 0.5),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                child: Center(
-                  child: Text('批注',
-                      style: TextStyle(
-                          fontFamily: 'iA Writer Mono',
-                          fontSize: 12.0,
-                          fontWeight: FontWeight.w500,
-                          color: textColor,
-                          letterSpacing: 0.5)),
+                const SizedBox(width: 8.0),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onNoteRequested,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 7.0),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8.0),
+                        border: Border.all(color: borderColor, width: 0.8),
+                      ),
+                      child: Center(
+                        child: Text('批注',
+                            style: TextStyle(
+                                fontFamily: 'iA Writer Mono',
+                                fontSize: 12.0,
+                                fontWeight: FontWeight.w500,
+                                color: textColor,
+                                letterSpacing: 0.5)),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
