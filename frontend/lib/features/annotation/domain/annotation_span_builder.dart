@@ -66,13 +66,13 @@ class AnnotationSpanBuilder {
   static TextStyle _styleFor(AnnotationRange r, TextStyle? baseStyle) {
     switch (r.style) {
       case AnnotationStyle.highlight:
-        return TextStyle(backgroundColor: r.color.withOpacity(0.35));
+        return TextStyle(backgroundColor: r.color.withValues(alpha: 0.35));
       case AnnotationStyle.halfHighlight:
         // TextSpan 无「下半背景」能力：粗底线（0.42em）模拟只高亮下半文字
         final fontSize = baseStyle?.fontSize ?? 16.0;
         return TextStyle(
           decoration: TextDecoration.underline,
-          decorationColor: r.color.withOpacity(0.55),
+          decorationColor: r.color.withValues(alpha: 0.55),
           decorationStyle: TextDecorationStyle.solid,
           decorationThickness: fontSize * 0.42,
         );

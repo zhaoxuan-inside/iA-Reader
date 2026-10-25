@@ -18,12 +18,12 @@ class FrostedModal extends StatelessWidget {
   final VoidCallback onDismiss;
 
   const FrostedModal({
-    Key? key,
+    super.key,
     required this.child,
     required this.width,
     required this.onDismiss,
     this.maxHeight = 640.0,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +42,8 @@ class FrostedModal extends StatelessWidget {
             filter: ImageFilter.blur(sigmaX: 14.0 * t, sigmaY: 14.0 * t),
             child: Container(
               color: isDark
-                  ? Colors.black.withOpacity(0.18 * t)
-                  : Colors.black.withOpacity(0.05 * t),
+                  ? Colors.black.withValues(alpha: 0.18 * t)
+                  : Colors.black.withValues(alpha: 0.05 * t),
               alignment: Alignment.center,
               // 面板：多层同色光晕羽化边界，无描边硬线
               child: Opacity(
@@ -57,17 +57,17 @@ class FrostedModal extends StatelessWidget {
                       borderRadius: BorderRadius.circular(18.0),
                       boxShadow: [
                         BoxShadow(
-                          color: surface.withOpacity(0.85),
+                          color: surface.withValues(alpha: 0.85),
                           blurRadius: 40.0,
                           spreadRadius: 12.0,
                         ),
                         BoxShadow(
-                          color: surface.withOpacity(0.50),
+                          color: surface.withValues(alpha: 0.50),
                           blurRadius: 90.0,
                           spreadRadius: 26.0,
                         ),
                         BoxShadow(
-                          color: surface.withOpacity(0.28),
+                          color: surface.withValues(alpha: 0.28),
                           blurRadius: 150.0,
                           spreadRadius: 40.0,
                         ),

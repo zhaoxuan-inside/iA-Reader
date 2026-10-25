@@ -19,10 +19,10 @@ class WindowControls extends StatelessWidget {
   final double iconSize;
 
   const WindowControls({
-    Key? key,
+    super.key,
     required this.color,
     this.iconSize = 14.0,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

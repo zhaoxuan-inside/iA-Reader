@@ -198,7 +198,7 @@ impl SqliteStorage {
     }
 
     /// 重建派生数据前清空旧章节/句子/关键词/关系/导图；批注与伴读会话按 book_id 保留
-    pub fn purge_book_derived_data(&self, book_id: i64) -> Result<()> {
+    pub fn delete_book_derived_data(&self, book_id: i64) -> Result<()> {
         let conn = self.conn.lock().unwrap();
         for table in ["book_section", "sentence_node", "keyword_node", "keyword_relation", "mindmap_node"] {
             conn.execute(&format!("DELETE FROM {} WHERE book_id = ?1", table), params![book_id])?;

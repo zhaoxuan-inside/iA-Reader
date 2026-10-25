@@ -48,12 +48,12 @@ class LibraryScreen extends StatefulWidget {
   final bool isDarkMode;
 
   const LibraryScreen({
-    Key? key,
+    super.key,
     required this.bridge,
     required this.onOpenBook,
     required this.onToggleTheme,
     required this.isDarkMode,
-  }) : super(key: key);
+  });
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -72,7 +72,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _loadBooks() async {
     setState(() => _isLoading = true);
-    final res = await widget.bridge.invoke('doc.list', {});
+    final res = await widget.bridge.invoke('book.list', {});
     if (res.isSuccess) {
       final list = (res.data['books'] as List<dynamic>?) ?? [];
       setState(() {
@@ -104,7 +104,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               style: TextButton.styleFrom(foregroundColor: const Color(0xFFE5484D)),
               onPressed: () async {
                 Navigator.of(ctx).pop();
-                await widget.bridge.invoke('book.delete', {'book_id': book.id});
+                await widget.bridge.invoke('book.deleted', {'book_id': book.id});
                 await _loadBooks();
               },
               child: const Text('删除', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -140,7 +140,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 final path = controller.text.trim();
                 Navigator.of(ctx).pop();
                 if (path.isNotEmpty) {
-                  final res = await widget.bridge.invoke('doc.parse', {'file_path': path});
+                  final res = await widget.bridge.invoke('book.parse', {'file_path': path});
                   if (res.isSuccess) {
                     final bookId = res.data['book_id'] ?? res.data['id'] ?? 1;
                     widget.onOpenBook(bookId);
@@ -288,7 +288,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           decoration: InputDecoration(
                             border: InputBorder.none,
                             hintText: '搜索文档标题或作者...',
-                            hintStyle: TextStyle(fontSize: 13.0, color: textSecondary.withOpacity(0.6)),
+                            hintStyle: TextStyle(fontSize: 13.0, color: textSecondary.withValues(alpha: 0.6)),
                             isDense: true,
                           ),
                           style: TextStyle(fontSize: 13.5, color: textPrimary),
@@ -334,7 +334,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.folder_open_outlined, size: 48.0, color: textSecondary.withOpacity(0.5)),
+                                Icon(Icons.folder_open_outlined, size: 48.0, color: textSecondary.withValues(alpha: 0.5)),
                                 const SizedBox(height: 12.0),
                                 Text('暂无匹配文档，点击右上角导入本地长文', style: TextStyle(color: textSecondary, fontSize: 13.5)),
                               ],
@@ -395,7 +395,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                           ],
                                         ),
                                       ),
-                                      Icon(Icons.arrow_forward_ios, size: 14.0, color: textSecondary.withOpacity(0.4)),
+                                      Icon(Icons.arrow_forward_ios, size: 14.0, color: textSecondary.withValues(alpha: 0.4)),
                                       const SizedBox(width: 8.0),
                                       // 书库管理：删除文档（确认框防误触，见 _confirmDeleteBook）
                                       GestureDetector(
@@ -405,7 +405,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                           child: Icon(
                                             Icons.delete_outline,
                                             size: 17.0,
-                                            color: textSecondary.withOpacity(0.55),
+                                            color: textSecondary.withValues(alpha: 0.55),
                                           ),
                                         ),
                                       ),

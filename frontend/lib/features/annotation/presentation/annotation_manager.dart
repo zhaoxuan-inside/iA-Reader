@@ -22,12 +22,12 @@ class AnnotationManagerModal extends StatelessWidget {
   final VoidCallback onClose;
 
   const AnnotationManagerModal({
-    Key? key,
+    super.key,
     required this.entries,
     required this.onDelete,
     required this.onEdit,
     required this.onClose,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

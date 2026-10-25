@@ -3,23 +3,30 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::Instant;
 use serde_json::{json, Value};
 use crate::service::ReaderService;
 use crate::storage::SqliteStorage;
 
-static SERVICE: OnceLock<Mutex<ReaderService>> = OnceLock::new();
+// 引擎全局单例：无外层 Mutex 直接共享（并发安全由 storage 内部 Arc<Mutex<Connection>>
+// 保证；ReaderService: Send+Sync）——此前整表锁串行化全部 action，秒级 book.parse
+// 会阻塞伴读轮询等其余调用。初始化失败以 Err 落入单例并透传错误信封，
+// 禁止 expect panic 直接击穿宿主进程。
+static SERVICE: OnceLock<Result<ReaderService, String>> = OnceLock::new();
 
-// @PublicAPI
-fn get_service() -> &'static Mutex<ReaderService> {
-    SERVICE.get_or_init(|| {
-        // ADR_005：集中存储初始化（目录/迁移/文件日志），db 落在 <base>/data/ai_reader.db
-        let rt = crate::paths::runtime();
-        let storage = SqliteStorage::init_db(&rt.db_path.to_string_lossy())
-            .expect("Failed to initialize SQLite storage");
-        Mutex::new(ReaderService::new(storage))
-    })
+fn get_service() -> Result<&'static ReaderService, String> {
+    SERVICE
+        .get_or_init(|| {
+            // ADR_005：集中存储初始化（目录/迁移/文件日志），db 落在 <base>/data/ai_reader.db
+            let rt = crate::paths::runtime();
+            match SqliteStorage::init_db(&rt.db_path.to_string_lossy()) {
+                Ok(storage) => Ok(ReaderService::new(storage)),
+                Err(e) => Err(format!("SQLite storage init failed: {}", e)),
+            }
+        })
+        .as_ref()
+        .map_err(|e| e.clone())
 }
 
 #[no_mangle]
@@ -93,11 +100,7 @@ fn execute_companion_action(action: &str, val: &Value) -> Result<Value, String> 
     let selected_text = val.get("selected_text").and_then(|v| v.as_str()).unwrap_or("");
     let prompt = val.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
 
-    // 锁内只克隆 storage 句柄（Arc 内核），随即释放
-    let storage = {
-        let service_guard = get_service().lock().unwrap();
-        service_guard.storage.clone()
-    };
+    let storage = get_service()?.storage.clone();
     let config = crate::llm::LlmConfig::load();
     let request_id = crate::service::companion_start(
         Box::new(crate::llm::UreqLlmClient),
@@ -143,45 +146,52 @@ fn execute_companion_action(action: &str, val: &Value) -> Result<Value, String> 
 }
 
 pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
-    let val: Value = serde_json::from_str(payload).unwrap_or(json!({}));
+    // 空/空白 payload 视为 {}（CLI 便捷调用）；非空但畸形必须显式报错——
+    // 此前静默当 {} 会把调用方的拼写/编码错误掩盖成"成功空结果"
+    let trimmed = payload.trim();
+    let val: Value = if trimmed.is_empty() {
+        json!({})
+    } else {
+        serde_json::from_str(trimmed).map_err(|e| format!("payload JSON 无效: {}", e))?
+    };
 
-    // 流式伴读三通道（task_17 D3）：LLM 调用全程不占用 SERVICE Mutex——
+    // 流式伴读三通道（task_17 D3）：LLM 调用全程不占全局单例——
     // companion_start 派生线程执行，companion_poll 只读注册表；
-    // companion_ask 以 start+轮询 join 保持旧契约，其他 action 不再被秒级 LLM 调用串行化阻塞。
+    // companion_ask 以 start+轮询 join 保持旧契约。
     if action == "ai.companion_start" || action == "ai.companion_poll" || action == "ai.companion_ask" {
         return execute_companion_action(action, &val);
     }
 
-    let service_guard = get_service().lock().unwrap();
+    let service = get_service()?;
 
     match action {
-        "doc.parse" => {
+        "book.parse" => {
             let file_path = val.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
-            let meta = service_guard.doc_parse(file_path)?;
+            let meta = service.doc_parse(file_path)?;
             Ok(serde_json::to_value(meta).map_err(|e| e.to_string())?)
         }
-        "doc.list" => {
-            let books = service_guard.storage.list_books().map_err(|e| e.to_string())?;
+        "book.list" => {
+            let books = service.storage.list_books().map_err(|e| e.to_string())?;
             // FFI 契约（前端 LibraryScreen._loadBooks）：data 必须是 {books:[...]} 信封 Map——
             // 裸数组会令 Dart 侧 InvokeEnvelope 解析抛错并静默回退 mock 假书单。
             let mut payload = Vec::with_capacity(books.len());
             for b in &books {
                 let mut v = serde_json::to_value(b).map_err(|e| e.to_string())?;
                 if let Some(obj) = v.as_object_mut() {
-                    let count = service_guard.storage.count_sections(b.id).unwrap_or(0);
+                    let count = service.storage.count_sections(b.id).unwrap_or(0);
                     obj.insert("sections_count".to_string(), json!(count));
                 }
                 payload.push(v);
             }
             Ok(json!({ "books": payload }))
         }
-        "book.delete" => {
-            // FEAT-001 书库管理：删除书籍并清理批注/伴读会话/章节句子等派生数据
+        "book.deleted" => {
+            // FEAT-001 书库管理（book.deleted）：删除书籍并清理批注/伴读会话/章节句子等派生数据
             let book_id = val
                 .get("book_id")
                 .and_then(|v| v.as_i64())
-                .ok_or("book.delete requires book_id")?;
-            let deleted = service_guard
+                .ok_or("book.deleted requires book_id")?;
+            let deleted = service
                 .storage
                 .delete_book_full(book_id)
                 .map_err(|e| e.to_string())?;
@@ -190,17 +200,17 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             }
             Ok(json!({ "status": "deleted", "book_id": book_id }))
         }
-        "doc.get" => {
+        "book.get" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
-            let meta = service_guard.storage.get_book(book_id).map_err(|e| e.to_string())?;
-            let sections = service_guard.storage.get_sections(book_id).map_err(|e| e.to_string())?;
+            let meta = service.storage.get_book(book_id).map_err(|e| e.to_string())?;
+            let sections = service.storage.get_sections(book_id).map_err(|e| e.to_string())?;
 
             // FFI 契约（前端 _loadDocumentData / bridge mock）：sections[].paragraphs[]。
             // 引擎此前只回 section 行，正文从未进入前端——阅读区恒空白。
             // 段落优先取 sentence_node 切片；缺失时按空行切分 content 兜底（跳过 markdown 标题行）。
             let mut section_payloads = Vec::with_capacity(sections.len());
             for section in &sections {
-                let sentences = service_guard
+                let sentences = service
                     .storage
                     .get_sentences(section.id)
                     .unwrap_or_default();
@@ -238,7 +248,7 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         "nlp.keyword_extract" | "nlp.extract_keywords" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let top_n = val.get("top_n").and_then(|v| v.as_u64()).unwrap_or(30) as usize;
-            let keywords = service_guard.nlp_keyword_extract(book_id, top_n)?;
+            let keywords = service.nlp_keyword_extract(book_id, top_n)?;
             // FFI 契约（前端 KeywordTagItem / 词云字号映射）：word/score/count
             let items: Vec<Value> = keywords
                 .iter()
@@ -249,8 +259,8 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         "nlp.build_graph" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let min_co = val.get("min_co_occurrence").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
-            let relations = service_guard.keyword_graph_build(book_id, min_co)?;
-            let keywords = service_guard.storage.get_keywords(book_id).unwrap_or_default();
+            let relations = service.keyword_graph_build(book_id, min_co)?;
+            let keywords = service.storage.get_keywords(book_id).unwrap_or_default();
             Ok(json!({
                 "nodes": keywords,
                 "links": relations
@@ -258,7 +268,7 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
         }
         "mindmap.generate" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
-            let nodes = service_guard.mindmap_generate(book_id)?;
+            let nodes = service.mindmap_generate(book_id)?;
             // FFI 契约（前端 MindmapNodeItem）：label/depth（引擎内为 title/level）
             let items: Vec<Value> = nodes
                 .iter()
@@ -283,7 +293,7 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             let anchor_json = val.get("anchor").map(|v| v.to_string()).unwrap_or_else(|| "{}".to_string());
             let ai_response = val.get("ai_response").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-            let annot = crate::domain::Annotation {
+            let annotation = crate::domain::Annotation {
                 id: 0,
                 created_at: String::new(),
                 updated_at: String::new(),
@@ -298,55 +308,54 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
                 anchor_json,
                 ai_response,
             };
-            let id = service_guard.annotation_manage(&annot)?;
+            let id = service.annotation_manage(&annotation)?;
             Ok(json!({ "annotation_id": id, "status": "saved" }))
         }
         "annotation.list" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
-            let list = service_guard.storage.get_annotations(book_id).map_err(|e| e.to_string())?;
+            let list = service.storage.get_annotations(book_id).map_err(|e| e.to_string())?;
             Ok(json!({ "annotations": list }))
         }
-        "annotation.delete" => {
+        "annotation.deleted" => {
             let annotation_id = val
                 .get("annotation_id")
                 .and_then(|v| v.as_i64())
-                .ok_or("annotation.delete requires annotation_id")?;
-            service_guard
+                .ok_or("annotation.deleted requires annotation_id")?;
+            service
                 .storage
                 .delete_annotation(annotation_id)
                 .map_err(|e| e.to_string())?;
             Ok(json!({ "status": "deleted", "annotation_id": annotation_id }))
         }
-        "annotation.update" => {
+        "annotation.updated" => {
             let annotation_id = val
                 .get("annotation_id")
                 .and_then(|v| v.as_i64())
-                .ok_or("annotation.update requires annotation_id")?;
+                .ok_or("annotation.updated requires annotation_id")?;
             let note_text = val.get("note_text").and_then(|v| v.as_str());
             let color = val.get("color").and_then(|v| v.as_str());
             let style = val.get("style").and_then(|v| v.as_str());
-            let changed = service_guard
+            let changed = service
                 .storage
                 .update_annotation(annotation_id, note_text, color, style)
                 .map_err(|e| e.to_string())?;
             Ok(json!({ "status": if changed { "updated" } else { "not_found" }, "annotation_id": annotation_id }))
         }
-        "ai.companion_ask" => {
-            let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
-            let template_type = val.get("template_type").and_then(|v| v.as_str()).unwrap_or("general");
-            let selected_text = val.get("selected_text").and_then(|v| v.as_str()).unwrap_or("");
-            let prompt = val.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
-            let response = service_guard.ai_companion_stream(book_id, template_type, selected_text, prompt)?;
-            Ok(json!({
-                "response": response,
-                "template_type": template_type
-            }))
-        }
+        // ai.companion_ask 在 execute_action 顶部已拦截走流式管线，此臂不可达，已移除
         "config.get" => {
             let cfg = crate::llm::LlmConfig::load();
             let rt = crate::paths::runtime();
+            // PRD NFR「密钥不回显明文」：api_key 以掩码返回并附尾号提示；
+            // 真实密钥仅存本机配置文件，不进入任何返回通道
+            let configured = !cfg.api_key.trim().is_empty();
+            let mut cfg_json = serde_json::to_value(&cfg).map_err(|e| e.to_string())?;
+            if let Some(obj) = cfg_json.as_object_mut() {
+                obj.insert("api_key".to_string(), json!(if configured { crate::llm::API_KEY_MASK } else { "" }));
+                obj.insert("api_key_configured".to_string(), json!(configured));
+                obj.insert("api_key_tail".to_string(), json!(crate::llm::api_key_tail(&cfg)));
+            }
             Ok(json!({
-                "config": cfg,
+                "config": cfg_json,
                 "config_path": crate::llm::user_config_path().to_string_lossy(),
                 "paths": {
                     "base": rt.base.to_string_lossy(),
@@ -363,9 +372,17 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             let base = crate::llm::LlmConfig::load();
             let cfg = crate::llm::overlay_config(&base, val.get("config"))?;
             crate::llm::save_user_config(&crate::llm::user_config_path(), &cfg)?;
+            // 返回值同样掩码（与 config.get 同口径，密钥不出引擎）
+            let configured = !cfg.api_key.trim().is_empty();
+            let mut cfg_json = serde_json::to_value(&cfg).map_err(|e| e.to_string())?;
+            if let Some(obj) = cfg_json.as_object_mut() {
+                obj.insert("api_key".to_string(), json!(if configured { crate::llm::API_KEY_MASK } else { "" }));
+                obj.insert("api_key_configured".to_string(), json!(configured));
+                obj.insert("api_key_tail".to_string(), json!(crate::llm::api_key_tail(&cfg)));
+            }
             Ok(json!({
                 "saved": true,
-                "config": cfg,
+                "config": cfg_json,
                 "config_path": crate::llm::user_config_path().to_string_lossy(),
             }))
         }

@@ -47,7 +47,7 @@ def handle_parse(args):
         sys.exit(1)
     
     payload = json.dumps({"file_path": file_path})
-    res_raw = ai_reader_invoke("doc.parse", payload)
+    res_raw = ai_reader_invoke("book.parse", payload)
     res = json.loads(res_raw)
     
     if res.get("code") == 0:
@@ -80,7 +80,7 @@ def handle_books(args):
 
 def handle_book(args):
     payload = json.dumps({"book_id": args.book_id})
-    res_raw = ai_reader_invoke("book.detail", payload)
+    res_raw = ai_reader_invoke("book.get", payload)
     res = json.loads(res_raw)
     if res.get("code") == 0:
         data = res.get("data", {})
@@ -117,7 +117,7 @@ def handle_keywords(args):
 
 def handle_graph(args):
     payload = json.dumps({"book_id": args.book_id, "window_size": args.window_size})
-    res_raw = ai_reader_invoke("graph.build", payload)
+    res_raw = ai_reader_invoke("nlp.build_graph", payload)
     res = json.loads(res_raw)
     if res.get("code") == 0:
         data = res.get("data", {})
@@ -239,7 +239,7 @@ def main():
 
     # invoke (low level)
     p_inv = subparsers.add_parser("invoke", help="Execute low-level six-tuple FFI action")
-    p_inv.add_argument("--action", required=True, help="Action name (e.g., doc.parse, nlp.keyword_extract)")
+    p_inv.add_argument("--action", required=True, help="Action name (e.g., book.parse, nlp.keyword_extract)")
     p_inv.add_argument("--payload", default="{}", help="JSON payload string")
     p_inv.add_argument("--pretty", action="store_true", help="Pretty-print JSON response")
 
@@ -273,7 +273,7 @@ def main():
     if len(sys.argv) == 2 and os.path.exists(sys.argv[1]) and not sys.argv[1].startswith("-"):
         doc_path = str(Path(sys.argv[1]).resolve())
         print(f"[*] Opening document in AI Reader: {doc_path}")
-        ai_reader_invoke("doc.parse", json.dumps({"file_path": doc_path}))
+        ai_reader_invoke("book.parse", json.dumps({"file_path": doc_path}))
         start_ui_workbench(launch_gui=True)
         return
 

@@ -15,10 +15,10 @@ class WordCloud extends StatelessWidget {
   final ValueChanged<String> onKeywordSelected;
 
   const WordCloud({
-    Key? key,
+    super.key,
     required this.keywords,
     required this.onKeywordSelected,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +51,7 @@ class WordCloud extends StatelessWidget {
                 style: TextStyle(
                   fontSize: fontSize,
                   fontWeight: strong ? FontWeight.w700 : FontWeight.w400,
-                  color: strong ? accent : textColor.withOpacity(0.55 + kw.score * 0.45),
+                  color: strong ? accent : textColor.withValues(alpha: 0.55 + kw.score * 0.45),
                   height: 1.2,
                 ),
               ),

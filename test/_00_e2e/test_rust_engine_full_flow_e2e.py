@@ -59,7 +59,7 @@ def invoke(action, payload):
     return raw
 
 snapshot = {
-    "books": invoke("doc.list", {})["data"]["books"],
+    "books": invoke("book.list", {})["data"]["books"],
     "annotations": invoke("annotation.list", {"book_id": int(sys.argv[2])})["data"]["annotations"],
     "config": invoke("config.get", {})["data"]["config"],
 }
@@ -104,12 +104,12 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
             "快照隔离让读取者绝不阻塞写入者，写入者也绝不阻塞读取者。\n",
             encoding="utf-8",
         )
-        code, data, msg, _ = cls.invoke("doc.parse", {"file_path": str(cls.sample)})
+        code, data, msg, _ = cls.invoke("book.parse", {"file_path": str(cls.sample)})
         if code != 0:
             raise AssertionError(f"setUpClass 导入样例书失败: {msg}")
         cls.book_id = data["id"]
 
-        _, doc, _, _ = cls.invoke("doc.get", {"book_id": cls.book_id})
+        _, doc, _, _ = cls.invoke("book.get", {"book_id": cls.book_id})
         cls.first_section_id = doc["sections"][0]["id"]
 
     @classmethod
@@ -130,14 +130,14 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_01_reading_journey_data_ready(self):
         # 书库：真实章节数
-        code, data, msg, metrics = self.invoke("doc.list", {})
+        code, data, msg, metrics = self.invoke("book.list", {})
         self.assertEqual(code, 0, msg)
         self.assertGreater(metrics.get("duration_ms", -1), 0, "六元组信封必须携带 metrics")
         book = next(b for b in data["books"] if b["id"] == self.book_id)
         self.assertEqual(book["sections_count"], 2)
 
         # 阅读数据：段落来自句子切片且绑定真实章节（此前占位外键只对第一本书碰巧成立）
-        code, doc, msg, _ = self.invoke("doc.get", {"book_id": self.book_id})
+        code, doc, msg, _ = self.invoke("book.get", {"book_id": self.book_id})
         self.assertEqual(code, 0, msg)
         self.assertEqual(len(doc["sections"]), 2)
         all_paragraph_ids = []
@@ -226,7 +226,7 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
         self.assertEqual(saved["note_text"], "初始批注")
         self.assertIn("paragraph_id", json.loads(saved["anchor_json"]))
 
-        code, data, msg, _ = self.invoke("annotation.update", {
+        code, data, msg, _ = self.invoke("annotation.updated", {
             "annotation_id": annotation_id,
             "note_text": "更新后的批注",
             "color": "#007AFF",
@@ -239,7 +239,7 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
         self.assertEqual(updated["note_text"], "更新后的批注")
         self.assertEqual(updated["color"], "#007AFF")
 
-        code, data, msg, _ = self.invoke("annotation.delete", {"annotation_id": annotation_id})
+        code, data, msg, _ = self.invoke("annotation.deleted", {"annotation_id": annotation_id})
         self.assertEqual(code, 0, msg)
         self.assertEqual(data["status"], "deleted")
 
@@ -265,9 +265,25 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
         self.assertEqual(code, 0, msg)
         self.assertTrue(data["saved"])
 
-        code, data, _, _ = self.invoke("config.get", {})
-        self.assertEqual(data["config"]["api_key"], "sk-e2e-.roundtrip")
+        # PRD NFR「密钥不回显明文」：get 返回掩码 + 已配置标记 + 尾号提示
+        code, data, msg, _ = self.invoke("config.get", {})
+        self.assertEqual(data["config"]["api_key"], "********", "api_key 不得回显明文")
+        self.assertEqual(data["config"]["api_key_configured"], True)
+        self.assertEqual(data["config"]["api_key_tail"], "trip")
         self.assertEqual(data["config"]["model_name"], "deepseek-chat")
+
+        # 掩码占位再保存 = 未修改：真实密钥保留不被 "********" 顶掉
+        code, data, msg, _ = self.invoke("config.save", {
+            "config": {"api_key": "********"},
+        })
+        self.assertEqual(code, 0, msg)
+        code, data, _, _ = self.invoke("config.get", {})
+        self.assertEqual(data["config"]["api_key_configured"], True, "掩码占位保存后真实密钥应保留")
+
+        # 真实密钥确实落盘（读配置文件本体，而非回显通道）
+        import json as _json
+        saved_cfg = _json.loads((self.home / "config" / "llm_config.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved_cfg["api_key"], "sk-e2e-.roundtrip")
 
         # 持久化到用户配置文件（集中存储 ADR_005：<base>/config/llm_config.json）
         self.assertTrue((self.home / "config" / "llm_config.json").exists())

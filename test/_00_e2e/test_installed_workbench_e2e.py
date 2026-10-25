@@ -26,7 +26,8 @@ DEB_PACKAGE = WORKSPACE_ROOT / f"output/linux/ai-reader_{CURRENT_VERSION}_amd64.
 class TestInstalledWorkbenchE2E(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.test_db = WORKSPACE_ROOT / "test_installed_e2e.db"
+        import tempfile
+        cls.test_db = Path(tempfile.mkdtemp(prefix="ai_reader_installed_")) / "test_installed_e2e.db"
         if cls.test_db.exists():
             cls.test_db.unlink()
         cls.test_env = os.environ.copy()

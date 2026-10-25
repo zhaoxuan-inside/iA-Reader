@@ -10,11 +10,11 @@ class NoteEditorPopover extends StatefulWidget {
   final VoidCallback onCancel;
 
   const NoteEditorPopover({
-    Key? key,
+    super.key,
     this.initialText = '',
     required this.onSave,
     required this.onCancel,
-  }) : super(key: key);
+  });
 
   @override
   State<NoteEditorPopover> createState() => _NoteEditorPopoverState();

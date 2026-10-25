@@ -166,3 +166,40 @@
 - `book.delete` 沿用既有 `.delete` 动作命名（与 `annotation.delete` 一致）；事件词态/`doc→book` 实体统一的重命名批次新增 1 项待改（原 7 项）。
 - 拼接 bigram（如「检查点」→检查/查点）为无词典方案的固有噪声，权重已自然靠后；如需消除需引入词典分词（Phase 2 评估）。
 - Python 引擎 `tokenize` 仍为 2 字以上连续段正则，与 Rust bigram 行为分叉（双引擎契约单源化切片处理）。
+
+---
+
+# 变更记录：CFX-005 技术遗留全量清零（v0.0.9）
+
+- **日期**：2026-10-25
+- **intent / change_size / work_mode**：`BUILD` / `L` / `IMPLEMENT`
+- **触发**：开发者裁定「不要有遗留，每次都要完整实现」——本切片将账本登记的全部技术遗留一次清零。
+
+## 交付内容（按遗留项逐条销账）
+
+1. **动作词态/实体名统一（verify_consistency 原违规 7 项 → 0）**：`doc.parse/list/get → book.*`、`book.delete → book.deleted`、`annotation.delete/update → annotation.deleted/updated`；三端同步（Rust ffi.rs / Python reader_engine.py + CLI / Dart lib+test+integration_test / 全部 Python 测试）；`annot` 缩写变量全量改 `annotation`；`purge` 违禁词改 `delete_book_derived_data`。
+2. **FFI 并发治理**：移除全局 `Mutex<ReaderService>`（改为 `&'static` 直接共享，`LlmClient: Send+Sync`，并发安全由 storage 内部锁保证）——秒级 `book.parse` 不再阻塞其余 action；初始化失败与畸形 payload 改错误信封（40001/50002 语义），废除 `expect` panic 与静默 `{}`。
+3. **companion 注册表泄漏**：`CompanionStreamState` 增 `finished_at_ms`，done 后 60s 保留窗（重复 poll 稳定），惰性清扫回收（纯函数 `sweep_expired_streams` 单测钉死）。
+4. **api_key 明文回显（PRD NFR 违规）**：`config.get/save` 返回掩码 `********` + `api_key_configured` + `api_key_tail`（尾号提示）；真实密钥仅存本机配置文件；`overlay_config` 特判掩码占位=未修改；Dart 设置框显示"已配置(尾号 xxxx)"，仅用户实际修改才提交该键。e2e 断言：回显永远掩码、掩码再保存不清真值、落盘文件含真值。
+5. **Python 引擎三处对齐**：tokenize 重写为与 Rust 同算法 CJK bigram（双引擎行为一致）；动作名同步重命名（别名全删）；配置路径确认为集中存储+旧位迁移（已对齐无需改）。
+6. **Python 测试 DB 隔离**：5 套测试 DB 从共享挂载工作区迁 `/tmp` 本地盘（消除偶发 Bus error 与真实数据污染）；CLI 测试同隔离。
+7. **假产物清除**：`package_dist.py` 重写为「执行唯一打包脚本 + 真实产物清单」（SHA256/尺寸/时间戳全真实）；删除历史假 rpm(129B)/假 AppImage(71B)/陈旧 arch 包与旧版 deb；staging 树不再进 manifest。
+8. **Flutter 零告警**：`withOpacity` 全量迁移 `withValues`（22 处，span builder 测试期望同步精确值）；`dart fix` 25 处（super.key/const 等）；无用导入清除——`flutter analyze` 从 51 项（含 1 warning）到 **No issues found**；死依赖 riverpod/markdown/path 移除。
+9. **规格漂移修正（specs 测试 4 挂 → 10/10）**：DESIGN.md 版心区间实文无空格、胶囊零 emoji 微文案、抽屉三 Tab 现行文案与 360px 悬浮面板、`_annotations` 重命名——断言全部对齐现实；性能 SLA 断言对齐标题与 PRD 口径（<200ms）。
+
+## 回归证据
+
+| 套件 | 结果 |
+|---|---|
+| `cargo test` | 40/40 |
+| `verify_consistency --root .` | **PASS（零违规）** |
+| Python：e2e×2 / core / cli / specs / contract / perf | 全部 OK（4+5+8+4+10+8+4） |
+| `flutter analyze` | **No issues found** |
+| `flutter test` | 58/58 |
+| GUI integration_test（真 .so） | 1/1 |
+| 0.0.9 deb 打包 + manifest（真实校验和） | ✓ |
+| `dpkg -i` 装机 + 装机态 e2e | 3/3 |
+
+## 遗留登记（清零确认）
+
+本切片前登记的全部技术遗留已销账完毕。以下为**产品路线项**（非缺陷，属 Phase 2+ 功能池，不在遗留口径内）：词典级中文分词（消除拼接 bigram 噪声）、`nlp.build_graph` 概念共现图 UI、Windows/Android 构建（FEAT-011 后段）、rpm/arch 真实工具链打包、Markdown 排版渲染。

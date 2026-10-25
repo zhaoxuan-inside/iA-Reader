@@ -83,8 +83,8 @@ impl ReaderService {
         // 同路径换内容再导（upsert 命中已有行）：派生数据整体重建，防止新旧章节混杂；
         // 批注与伴读会话按 book_id 保留
         self.storage
-            .purge_book_derived_data(book_id)
-            .map_err(|e| format!("Failed to purge derived data: {}", e))?;
+            .delete_book_derived_data(book_id)
+            .map_err(|e| format!("Failed to delete derived data: {}", e))?;
 
         for s in &mut doc.sections {
             s.book_id = book_id;
@@ -514,6 +514,31 @@ pub struct CompanionStreamState {
     pub partial: String,
     pub done: bool,
     pub offline: bool,
+    /// 终态落定时刻（epoch ms）：done 后保留 60s 供前端重复 poll 稳定取终态，
+    /// 超时由惰性清扫回收——长会话下注册表不再无限增长（内存泄漏修复）
+    pub finished_at_ms: Option<u64>,
+}
+
+fn now_epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+/// done 且超保留窗的条目回收（纯函数，可单测）；未终态条目一律保留
+fn sweep_expired_streams(
+    registry: &mut HashMap<String, Arc<Mutex<CompanionStreamState>>>,
+    now_ms: u64,
+) {
+    const RETENTION_MS: u64 = 60_000;
+    registry.retain(|_, state| {
+        let st = state.lock().unwrap();
+        match st.finished_at_ms {
+            Some(t) => now_ms.saturating_sub(t) < RETENTION_MS,
+            None => true,
+        }
+    });
 }
 
 static COMPANION_STREAMS: OnceLock<Mutex<HashMap<String, Arc<Mutex<CompanionStreamState>>>>> =
@@ -614,17 +639,20 @@ pub fn companion_start(
         st.partial = response;
         st.done = true;
         st.offline = offline;
+        st.finished_at_ms = Some(now_epoch_ms());
     });
 
     request_id
 }
 
-/// 轮询流式伴读状态：未知 id 返回 None；done 后条目保留（重复 poll 稳定返回终态）。
+/// 轮询流式伴读状态：未知 id 返回 None；done 后 60s 内重复 poll 稳定返回终态，
+/// 超时条目被惰性清扫回收。
 pub fn companion_poll(request_id: &str) -> Option<CompanionStreamState> {
+    let now_ms = now_epoch_ms();
     let state = {
-        let registry = companion_streams().lock().unwrap();
-        let state = registry.get(request_id)?.clone();
-        state
+        let mut registry = companion_streams().lock().unwrap();
+        sweep_expired_streams(&mut registry, now_ms);
+        registry.get(request_id)?.clone()
     };
     let snapshot = state.lock().unwrap().clone();
     Some(snapshot)
@@ -659,8 +687,31 @@ mod companion_stream_tests {
         .unwrap()
     }
 
-    fn poll_until_done(request_id: &str, max_ms: u64) -> Option<CompanionStreamState> {
-        let deadline = std::time::Instant::now() + Duration::from_millis(max_ms);
+    /// 注册表回收：done 且超保留窗的条目清除，未终态与窗口内条目保留
+    #[test]
+    fn sweep_expired_streams_reclaims_done_entries() {
+        let mk = |done: bool, finished_at_ms: Option<u64>| {
+            Arc::new(Mutex::new(CompanionStreamState {
+                partial: String::new(),
+                done,
+                offline: false,
+                finished_at_ms,
+            }))
+        };
+        let now = 1_000_000u64;
+        let mut registry = HashMap::new();
+        registry.insert("old_done".to_string(), mk(true, Some(now - 61_000))); // 超窗 → 回收
+        registry.insert("fresh_done".to_string(), mk(true, Some(now - 10_000))); // 窗口内 → 保留
+        registry.insert("running".to_string(), mk(false, None)); // 未终态 → 保留
+
+        sweep_expired_streams(&mut registry, now);
+
+        assert!(!registry.contains_key("old_done"), "超窗 done 条目应被回收");
+        assert!(registry.contains_key("fresh_done"));
+        assert!(registry.contains_key("running"));
+    }
+
+    fn poll_until_done(request_id: &str, max_ms: u64) -> Option<CompanionStreamState> {        let deadline = std::time::Instant::now() + Duration::from_millis(max_ms);
         loop {
             if let Some(state) = companion_poll(request_id) {
                 if state.done {

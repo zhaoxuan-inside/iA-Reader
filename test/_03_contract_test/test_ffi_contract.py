@@ -5,7 +5,7 @@ test/_03_contract_test/test_ffi_contract.py
 Rust FFI 引擎 ↔ Flutter 前端 数据契约测试
 
 背景：此前 Dart 侧契约按内存 mock 定义，全部 Flutter 测试走 mock 通道，
-导致真实 libreader_core.so 与前端之间 4 处契约失配（doc.list 裸数组、
+导致真实 libreader_core.so 与前端之间 4 处契约失配（book.list 裸数组、
 词云 action 名、词云字段、导图字段）在测试全绿的情况下静默断裂。
 
 本测试用 ctypes 加载真实动态库，断言 FFI 输出与
@@ -104,22 +104,22 @@ class TestFfiContract(unittest.TestCase):
             f"单一事实源消除同名异义，契约测试消除静默漂移。样例{n}。\n",
             encoding="utf-8",
         )
-        code, data, msg = self.invoke("doc.parse", {"file_path": str(md)})
-        self.assertEqual(code, 0, f"doc.parse 失败: {msg}")
+        code, data, msg = self.invoke("book.parse", {"file_path": str(md)})
+        self.assertEqual(code, 0, f"book.parse 失败: {msg}")
         return data["id"], md
 
     def test_duplicate_import_rejected(self):
         book_id, md = self._import_sample_book()
-        code, _, msg = self.invoke("doc.parse", {"file_path": str(md)})
+        code, _, msg = self.invoke("book.parse", {"file_path": str(md)})
         self.assertNotEqual(code, 0, "同内容重复导入必须被拦截（FEAT-001 去重）")
         self.assertIn("已在书库", msg)
         # 原书不受影响
-        code, doc, _ = self.invoke("doc.get", {"book_id": book_id})
+        code, doc, _ = self.invoke("book.get", {"book_id": book_id})
         self.assertEqual(code, 0)
         self.assertEqual(len(doc["sections"]), 3)
 
     # ------------------------------------------------------------------
-    # 契约 6：book.delete——删除后书库消失、派生数据与批注一并清理、重复删除报错
+    # 契约 6：book.deleted——删除后书库消失、派生数据与批注一并清理、重复删除报错
     # ------------------------------------------------------------------
     def test_book_delete_lifecycle(self):
         book_id, _ = self._import_sample_book()
@@ -132,18 +132,18 @@ class TestFfiContract(unittest.TestCase):
         })
         self.assertEqual(code, 0, msg)
 
-        code, data, msg = self.invoke("book.delete", {"book_id": book_id})
+        code, data, msg = self.invoke("book.deleted", {"book_id": book_id})
         self.assertEqual(code, 0, msg)
         self.assertEqual(data["status"], "deleted")
 
         # 书库不再出现
-        code, data, msg = self.invoke("doc.list", {})
+        code, data, msg = self.invoke("book.list", {})
         self.assertEqual(code, 0, msg)
         self.assertFalse(
             any(b["id"] == book_id for b in data["books"]), "删除后书库不应再列出该书"
         )
         # 派生数据与批注一并清理（doc.get 章节为空、annotation.list 为空）
-        code, doc, msg = self.invoke("doc.get", {"book_id": book_id})
+        code, doc, msg = self.invoke("book.get", {"book_id": book_id})
         self.assertEqual(code, 0)
         self.assertEqual(doc["sections"], [])
         code, data, msg = self.invoke("annotation.list", {"book_id": book_id})
@@ -151,7 +151,7 @@ class TestFfiContract(unittest.TestCase):
         self.assertEqual(data["annotations"], [])
 
         # 重复删除：显式报错
-        code, _, msg = self.invoke("book.delete", {"book_id": book_id})
+        code, _, msg = self.invoke("book.deleted", {"book_id": book_id})
         self.assertNotEqual(code, 0)
         self.assertIn("not found", msg)
 
@@ -162,13 +162,13 @@ class TestFfiContract(unittest.TestCase):
     def test_doc_list_returns_books_map_with_section_counts(self):
         book_id, _ = self._import_sample_book()
 
-        code, data, msg = self.invoke("doc.list", {})
-        self.assertEqual(code, 0, f"doc.list 失败: {msg}")
+        code, data, msg = self.invoke("book.list", {})
+        self.assertEqual(code, 0, f"book.list 失败: {msg}")
         self.assertIsInstance(
-            data, dict, "doc.list 的 data 必须是 Map（裸数组会令前端信封解析抛错并静默回退 mock）"
+            data, dict, "book.list 的 data 必须是 Map（裸数组会令前端信封解析抛错并静默回退 mock）"
         )
         books = data.get("books")
-        self.assertIsInstance(books, list, "doc.list 缺少 books 数组字段")
+        self.assertIsInstance(books, list, "book.list 缺少 books 数组字段")
         self.assertTrue(any(b["id"] == book_id for b in books), "刚导入的书未出现在书库列表")
         for b in books:
             self.assertIn("title", b)
@@ -240,7 +240,7 @@ class TestFfiContract(unittest.TestCase):
         fake_pdf = self.tmp_home / "fake_paper.pdf"
         fake_pdf.write_bytes(b"%PDF-1.4 fake binary payload \xff\xff")
 
-        code, data, msg = self.invoke("doc.parse", {"file_path": str(fake_pdf)})
+        code, data, msg = self.invoke("book.parse", {"file_path": str(fake_pdf)})
         self.assertNotEqual(code, 0, "PDF 解析必须失败返回，禁止静默产出硬编码假正文")
         self.assertIn("支持", msg, "错误信息应说明当前支持的格式")
 
@@ -248,12 +248,12 @@ class TestFfiContract(unittest.TestCase):
         md = self.tmp_home / "hash_check.md"
         md.write_text("# 标题甲\n正文内容一。\n\n# 标题乙\n正文内容二。\n", encoding="utf-8")
 
-        code, data, msg = self.invoke("doc.parse", {"file_path": str(md)})
-        self.assertEqual(code, 0, f"doc.parse 失败: {msg}")
+        code, data, msg = self.invoke("book.parse", {"file_path": str(md)})
+        self.assertEqual(code, 0, f"book.parse 失败: {msg}")
         self.assertRegex(data["file_hash"], r"^[0-9a-f]{64}$", "file_hash 必须是真实 SHA-256")
         self.assertGreater(data["total_pages"], 0)
 
-        code, doc, msg = self.invoke("doc.get", {"book_id": data["id"]})
+        code, doc, msg = self.invoke("book.get", {"book_id": data["id"]})
         self.assertEqual(code, 0)
         sections = doc["sections"]
         self.assertEqual(len(sections), 2, "两个一级标题应切分为两个章节")

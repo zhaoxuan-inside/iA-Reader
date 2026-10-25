@@ -18,7 +18,8 @@ from pathlib import Path
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(WORKSPACE_ROOT))
 
-E2E_DB = WORKSPACE_ROOT / "test_e2e_suite.db"
+import tempfile
+E2E_DB = Path(tempfile.mkdtemp(prefix="ai_reader_e2e_py_")) / "test_e2e_suite.db"  # /tmp 本地盘:共享挂载上 SQLite WAL 偶发 Bus error
 os.environ["AI_READER_DB_PATH"] = str(E2E_DB)
 
 from backend.reader_engine import (
@@ -61,19 +62,19 @@ class TestReaderFullFlowE2E(unittest.TestCase):
         [主路径端到端]：
         文档解构 -> 沉浸阅读/聚焦弱化仿真 -> 划词伴读(4大模板) -> 原位追问 -> 边注持久化 -> 知识导图生成
         """
-        # ==================== 1. 文档解析与 AST 解构 (doc.parse) ====================
+        # ==================== 1. 文档解析与 AST 解构 (book.parse) ====================
         parse_payload = json.dumps({"file_path": str(self.sample_doc)})
-        res_parse_raw = ai_reader_invoke("doc.parse", parse_payload)
+        res_parse_raw = ai_reader_invoke("book.parse", parse_payload)
         res_parse = json.loads(res_parse_raw)
 
-        self.assertEqual(res_parse["code"], 0, "doc.parse 必须成功返回 code=0")
+        self.assertEqual(res_parse["code"], 0, "book.parse 必须成功返回 code=0")
         meta = res_parse["data"]
         book_id = meta["id"]
         self.assertGreater(book_id, 0)
         self.assertEqual(meta["format"], "md")
 
         # 校验章节与句子已切片
-        doc_detail_raw = ai_reader_invoke("doc.get", json.dumps({"book_id": book_id}))
+        doc_detail_raw = ai_reader_invoke("book.get", json.dumps({"book_id": book_id}))
         doc_detail = json.loads(doc_detail_raw)
         self.assertEqual(doc_detail["code"], 0)
         sections = doc_detail["data"]["sections"]
@@ -160,7 +161,7 @@ class TestReaderFullFlowE2E(unittest.TestCase):
 
         # 6b. 构建共现拓扑 (PMI)
         graph_payload = json.dumps({"book_id": book_id})
-        res_graph = json.loads(ai_reader_invoke("graph.build", graph_payload))
+        res_graph = json.loads(ai_reader_invoke("nlp.build_graph", graph_payload))
         self.assertEqual(res_graph["code"], 0)
         self.assertGreaterEqual(len(res_graph["data"]["nodes"]), 0)
         self.assertLess(res_graph["metrics"]["duration_ms"], 200, "拓扑耗时需 < 200ms")
@@ -196,7 +197,7 @@ class TestReaderFullFlowE2E(unittest.TestCase):
         传入不存在的文件路径，验证返回标准信封错误码 50001 且进程不崩溃
         """
         bad_payload = json.dumps({"file_path": "/path/to/non_existent_doc_never_here.pdf"})
-        res_raw = ai_reader_invoke("doc.parse", bad_payload)
+        res_raw = ai_reader_invoke("book.parse", bad_payload)
         res = json.loads(res_raw)
 
         self.assertEqual(res["code"], 50001, "文件不存在必须返回 50001 错误码")
@@ -214,8 +215,8 @@ class TestReaderFullFlowE2E(unittest.TestCase):
         self.assertIn("ask", res_cli.stdout)
         self.assertIn("mindmap", res_cli.stdout)
 
-        # 通过 low-level invoke 触发 doc.list
-        res_ffi_raw = ai_reader_invoke("doc.list", "{}")
+        # 通过 low-level invoke 触发 book.list
+        res_ffi_raw = ai_reader_invoke("book.list", "{}")
         res_ffi = json.loads(res_ffi_raw)
         self.assertEqual(res_ffi["code"], 0)
         self.assertIn("books", res_ffi["data"])

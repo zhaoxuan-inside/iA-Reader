@@ -47,7 +47,7 @@ class TestCoreEngineCLI(unittest.TestCase):
             self.assertIn("test_cli_doc", res_books.stdout)
 
             # 4. 执行 low-level invoke
-            res_inv = self.run_cli(["invoke", "--action", "doc.list", "--pretty"])
+            res_inv = self.run_cli(["invoke", "--action", "book.list", "--pretty"])
             self.assertEqual(res_inv.returncode, 0)
             data = json.loads(res_inv.stdout)
             self.assertEqual(data.get("code"), 0)

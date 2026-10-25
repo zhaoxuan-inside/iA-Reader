@@ -11,12 +11,12 @@ class MobileCompanionSheet extends StatelessWidget {
   final VoidCallback onSaveAnnotation;
 
   const MobileCompanionSheet({
-    Key? key,
+    super.key,
     required this.currentTemplate,
     required this.analysisContent,
     required this.onDismiss,
     required this.onSaveAnnotation,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +37,7 @@ class MobileCompanionSheet extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20.0)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.5 : 0.12),
+                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
                 blurRadius: 16.0,
                 offset: const Offset(0, -4),
               ),

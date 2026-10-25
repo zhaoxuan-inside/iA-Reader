@@ -96,10 +96,10 @@ class MindmapCanvas extends StatelessWidget {
   final ValueChanged<MindmapNodeItem> onNodeSelected;
 
   const MindmapCanvas({
-    Key? key,
+    super.key,
     required this.nodes,
     required this.onNodeSelected,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +166,7 @@ class _MindmapPainter extends CustomPainter {
 
     // 先画连线（贝塞尔）
     final edgePaint = Paint()
-      ..color = borderColor.withOpacity(0.9)
+      ..color = borderColor.withValues(alpha: 0.9)
       ..strokeWidth = 1.2
       ..style = PaintingStyle.stroke;
     final byId = {for (final n in nodes) n.id: n};
@@ -212,7 +212,7 @@ class _MindmapPainter extends CustomPainter {
             fontFamily: 'iA Writer Mono',
             fontSize: isRoot ? 11.5 : 11.0,
             fontWeight: isRoot ? FontWeight.w600 : FontWeight.w400,
-            color: isRoot ? textColor : textColor.withOpacity(0.85),
+            color: isRoot ? textColor : textColor.withValues(alpha: 0.85),
           ),
         ),
         maxLines: 1,

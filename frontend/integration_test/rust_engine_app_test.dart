@@ -53,12 +53,12 @@ void main() {
     );
     const bookTitle = 'gui_e2e_real_engine_sample';
 
-    final parse = await bridge.invoke('doc.parse', {'file_path': sample.path});
+    final parse = await bridge.invoke('book.parse', {'file_path': sample.path});
     expect(parse.isSuccess, isTrue, reason: '真引擎导入失败: ${parse.message}');
     final bookId = parse.data['id'] as int;
 
     // 真实书库数据（引擎级前置断言）
-    final list = await bridge.invoke('doc.list', {});
+    final list = await bridge.invoke('book.list', {});
     final books = (list.data['books'] as List).cast<Map>();
     expect(books.any((b) => b['id'] == bookId), isTrue);
     expect(books.firstWhere((b) => b['id'] == bookId)['sections_count'], 2);

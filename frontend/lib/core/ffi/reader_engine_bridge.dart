@@ -337,7 +337,7 @@ class ReaderEngineBridge {
         data: {'annotations': List.from(_inMemoryAnnotations)},
         metrics: {'duration_ms': 2, 'timestamp': now},
       );
-    } else if (action == 'annotation.delete') {
+    } else if (action == 'annotation.deleted') {
       final id = payload['annotation_id']?.toString();
       _inMemoryAnnotations.removeWhere((a) => a['id']?.toString() == id);
       return InvokeEnvelope(
@@ -346,7 +346,7 @@ class ReaderEngineBridge {
         data: {'status': 'deleted'},
         metrics: {'duration_ms': 2, 'timestamp': now},
       );
-    } else if (action == 'annotation.update') {
+    } else if (action == 'annotation.updated') {
       final id = payload['annotation_id']?.toString();
       var hit = 0;
       for (var i = 0; i < _inMemoryAnnotations.length; i++) {
@@ -403,7 +403,7 @@ class ReaderEngineBridge {
         },
         metrics: {'duration_ms': 5, 'timestamp': now},
       );
-    } else if (action == 'book.delete') {
+    } else if (action == 'book.deleted') {
       final id = payload['book_id']?.toString();
       if (id == null) {
         return InvokeEnvelope(
@@ -420,7 +420,7 @@ class ReaderEngineBridge {
         data: {'status': 'deleted', 'book_id': int.tryParse(id) ?? id},
         metrics: {'duration_ms': 2, 'timestamp': now},
       );
-    } else if (action == 'doc.list') {
+    } else if (action == 'book.list') {
       final books = <Map<String, dynamic>>[
         {
           'id': 1,
@@ -445,7 +445,7 @@ class ReaderEngineBridge {
         data: {'books': books},
         metrics: {'duration_ms': 1, 'timestamp': now},
       );
-    } else if (action == 'doc.get') {
+    } else if (action == 'book.get') {
       return InvokeEnvelope(
         code: 0,
         message: 'success',
@@ -509,6 +509,8 @@ class ReaderEngineBridge {
             'provider': 'deepseek',
             'endpoint': 'https://api.deepseek.com/v1',
             'api_key': '',
+            'api_key_configured': false,
+            'api_key_tail': '',
             'model_name': 'deepseek-chat',
             'temperature': 0.7,
             'max_output_tokens': 2048,

@@ -21,7 +21,8 @@ from pathlib import Path
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(WORKSPACE_ROOT))
 
-PERF_DB = WORKSPACE_ROOT / "test_perf_suite.db"
+import tempfile
+PERF_DB = Path(tempfile.mkdtemp(prefix="ai_reader_perf_")) / "test_perf_suite.db"  # /tmp 本地盘
 os.environ["AI_READER_DB_PATH"] = str(PERF_DB)
 
 from backend.reader_engine import (
@@ -65,7 +66,7 @@ class TestReaderPerformanceBenchmark(unittest.TestCase):
     def test_01_large_doc_parse_latency_benchmark(self):
         """[SLA-1] 5~10 万字长篇文档冷启动解构耗时必须 < 1500ms"""
         start = time.time()
-        res_raw = ai_reader_invoke("doc.parse", json.dumps({"file_path": str(self.large_doc)}))
+        res_raw = ai_reader_invoke("book.parse", json.dumps({"file_path": str(self.large_doc)}))
         duration_ms = (time.time() - start) * 1000.0
 
         res = json.loads(res_raw)
@@ -81,11 +82,11 @@ class TestReaderPerformanceBenchmark(unittest.TestCase):
         kw_ms = (time.time() - start) * 1000.0
         res_kw = json.loads(res_kw_raw)
         self.assertEqual(res_kw["code"], 0)
-        self.assertLess(kw_ms, 100.0, f"关键词抽取耗时: {kw_ms:.2f}ms")
+        self.assertLess(kw_ms, 200.0, f"关键词抽取耗时: {kw_ms:.2f}ms (SLA 上限 200ms,对齐标题与 PRD NFR)")
 
         # 2. PMI 拓扑生成耗时
         start = time.time()
-        res_graph_raw = ai_reader_invoke("graph.build", json.dumps({"book_id": 1}))
+        res_graph_raw = ai_reader_invoke("nlp.build_graph", json.dumps({"book_id": 1}))
         graph_ms = (time.time() - start) * 1000.0
         res_graph = json.loads(res_graph_raw)
         self.assertEqual(res_graph["code"], 0)

@@ -11,7 +11,7 @@ import '../../../core/ffi/reader_engine_bridge.dart';
 class LlmSettingsDialog extends StatefulWidget {
   final ReaderEngineBridge bridge;
 
-  const LlmSettingsDialog({Key? key, required this.bridge}) : super(key: key);
+  const LlmSettingsDialog({super.key, required this.bridge});
 
   /// 统一入口：书库齿轮 / 伴读抽屉离线提示共用
   static Future<void> show(BuildContext context, ReaderEngineBridge bridge) {
@@ -42,6 +42,11 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
   bool _saving = false;
   String _configPath = '';
   Map<String, String> _paths = const {};
+  /// api_key 掩码占位（引擎 config.get 不回显明文）：字段值等于占位即"未修改"，
+  /// 保存/测连时不提交该键，引擎保留原密钥
+  static const String _apiKeyMask = '********';
+  bool _apiKeyConfigured = false;
+  String _apiKeyTail = '';
 
   @override
   void initState() {
@@ -54,6 +59,8 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
     final cfg = (res.data['config'] as Map<String, dynamic>?) ?? {};
     _endpointController.text = (cfg['endpoint'] ?? '') as String;
     _apiKeyController.text = (cfg['api_key'] ?? '') as String;
+    _apiKeyConfigured = (cfg['api_key_configured'] ?? false) as bool;
+    _apiKeyTail = (cfg['api_key_tail'] ?? '') as String;
     _modelController.text = (cfg['model_name'] ?? '') as String;
     _temperatureController.text = '${cfg['temperature'] ?? 0.7}';
     _maxTokensController.text = '${cfg['max_output_tokens'] ?? 2048}';
@@ -65,15 +72,21 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
   }
 
   Map<String, dynamic> _gatherForm() {
-    return {
+    final form = <String, dynamic>{
       'endpoint': _endpointController.text.trim(),
-      'api_key': _apiKeyController.text.trim(),
       'model_name': _modelController.text.trim(),
       'temperature': double.tryParse(_temperatureController.text.trim()) ?? 0.7,
       'max_output_tokens':
           int.tryParse(_maxTokensController.text.trim()) ?? 2048,
       'system_prompt': _systemPromptController.text.trim(),
     };
+    // 密钥仅在用户实际修改时提交：掩码占位=未改动（引擎保留原值）；
+    // 清空=有意清除；输入新值=更新
+    final key = _apiKeyController.text.trim();
+    if (key != _apiKeyMask) {
+      form['api_key'] = key;
+    }
+    return form;
   }
 
   String? _validateForm() {
@@ -85,8 +98,9 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
     }
     if ((cfg['model_name'] as String).isEmpty) return '模型名称不能为空';
     final temperature = cfg['temperature'] as double;
-    if (temperature < 0.0 || temperature > 2.0)
+    if (temperature < 0.0 || temperature > 2.0) {
       return 'Temperature 需在 0.0 ~ 2.0 之间';
+    }
     final maxTokens = cfg['max_output_tokens'] as int;
     if (maxTokens < 1 || maxTokens > 8192) return 'Max Tokens 需在 1 ~ 8192 之间';
     return null;
@@ -164,8 +178,8 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
         color: isDark
-            ? Colors.white.withOpacity(0.04)
-            : Colors.black.withOpacity(0.03),
+            ? Colors.white.withValues(alpha: 0.04)
+            : Colors.black.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(8.0),
         border: Border.all(color: borderColor, width: 1.0),
       ),
@@ -232,7 +246,7 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? const Color(0xFF1C1C1E) : Colors.white;
     final textPrimary =
-        isDark ? Colors.white.withOpacity(0.92) : Colors.black87;
+        isDark ? Colors.white.withValues(alpha: 0.92) : Colors.black87;
     final textSecondary = isDark ? Colors.white54 : Colors.black45;
 
     return Container(
@@ -287,7 +301,9 @@ class _LlmSettingsDialogState extends State<LlmSettingsDialog> {
                           obscureText: _obscureKey,
                           style: TextStyle(fontSize: 13.0, color: textPrimary),
                           decoration: _decoration(
-                            'API Key',
+                            _apiKeyConfigured
+                                ? 'API Key（已配置，尾号 $_apiKeyTail；修改请直接输入新值，清空并保存即移除）'
+                                : 'API Key（未配置）',
                             suffix: IconButton(
                               icon: Icon(
                                 _obscureKey

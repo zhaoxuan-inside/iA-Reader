@@ -1,5 +1,4 @@
 // 划词高亮选区级端到端测试（task_12 D5：只高亮所选子串 + anchor 持久化）
-import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
@@ -91,7 +90,7 @@ void main() {
     expect(row['style'], 'highlight');
 
     // 删除与更新也应可用（task_13/16 标注管理）
-    final delRes = await bridge.invoke('annotation.delete', {'annotation_id': savedId});
+    final delRes = await bridge.invoke('annotation.deleted', {'annotation_id': savedId});
     expect(delRes.isSuccess, isTrue);
     final list2 = await bridge.invoke('annotation.list', {'book_id': 1});
     final rows2 = (list2.data['annotations'] as List).cast<Map<String, dynamic>>();
@@ -109,7 +108,7 @@ void main() {
     });
     final id = saveRes.data['annotation_id'];
 
-    final updRes = await bridge.invoke('annotation.update', {
+    final updRes = await bridge.invoke('annotation.updated', {
       'annotation_id': id,
       'note_text': '新批注',
     });
@@ -123,7 +122,7 @@ void main() {
     expect(row['color'], '#CA8A04', reason: '未提供的字段保持');
 
     // 更新不存在的 id → not_found
-    final miss = await bridge.invoke('annotation.update', {
+    final miss = await bridge.invoke('annotation.updated', {
       'annotation_id': 'no_such',
       'note_text': 'x',
     });

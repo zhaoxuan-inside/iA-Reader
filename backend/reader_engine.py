@@ -398,10 +398,10 @@ class StorageManager:
         conn.close()
         return [dict(r) for r in rows]
 
-    def save_annotation(self, a: Dict[str, Any]) -> int:
+    def save_annotation(self, annotation: Dict[str, Any]) -> int:
         conn = self.get_connection()
         cur = conn.cursor()
-        book_id = a.get("book_id", 1)
+        book_id = annotation.get("book_id", 1)
         cur.execute("SELECT id FROM book_meta WHERE id = ?", (book_id,))
         if not cur.fetchone():
             cur.execute("""
@@ -413,11 +413,11 @@ class StorageManager:
         cur.execute("""
             INSERT INTO annotation (book_id, section_id, color, style, note_text, anchor_json, ai_response, is_del, version)
             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)
-        """, (book_id, a.get("section_id"), a.get("color", "#FFE066"), a.get("style", "highlight"), a.get("note_text"), a.get("anchor_json", "{}"), a.get("ai_response")))
+        """, (book_id, annotation.get("section_id"), annotation.get("color", "#FFE066"), annotation.get("style", "highlight"), annotation.get("note_text"), annotation.get("anchor_json", "{}"), annotation.get("ai_response")))
         conn.commit()
-        annot_id = cur.lastrowid
+        annotation_id = cur.lastrowid
         conn.close()
-        return annot_id
+        return annotation_id
 
     def get_annotations(self, book_id: int) -> List[Dict[str, Any]]:
         conn = self.get_connection()
@@ -427,9 +427,9 @@ class StorageManager:
         conn.close()
         return [dict(r) for r in rows]
 
-    def delete_annotation(self, annot_id: int):
+    def delete_annotation(self, annotation_id: int):
         conn = self.get_connection()
-        conn.execute("UPDATE annotation SET is_del = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (annot_id,))
+        conn.execute("UPDATE annotation SET is_del = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", (annotation_id,))
         conn.commit()
         conn.close()
 
@@ -826,13 +826,46 @@ def parse_txt(file_path: str) -> Dict[str, Any]:
 # 真实离线 NLP 算法 (Tokenizer, TF-IDF, TextRank, Co-occurrence & PMI)
 # ==============================================================================
 def tokenize(text: str) -> List[str]:
-    # 提取多字中文短语或英文学术单词
-    words = re.findall(r'[a-zA-Z]{3,}|[\u4e00-\u9fa5]{2,}', text)
+    """CJK 连续段滑窗二元切词（与 Rust nlp.rs 同算法，Lucene CJKAnalyzer 策略）。
+
+    无词典依赖下对中文关键词/词云最稳：真实词因跨语境重复出现被 TF-IDF/TextRank
+    自然置顶，一次性拼接 bigram 权重自然衰减。双引擎算法保持一致，杜绝行为分叉。
+    """
+    words: List[str] = []
+    ascii_run: List[str] = []
+    cjk_run: List[str] = []
+
+    def flush_ascii():
+        if ascii_run:
+            words.append("".join(ascii_run).lower())
+            ascii_run.clear()
+
+    def flush_cjk():
+        if len(cjk_run) >= 2:
+            for i in range(len(cjk_run) - 1):
+                words.append(cjk_run[i] + cjk_run[i + 1])
+        cjk_run.clear()
+
+    for ch in text:
+        if ch.isascii() and ch.isalnum():
+            flush_cjk()
+            ascii_run.append(ch)
+        elif "\u4e00" <= ch <= "\u9fff":
+            flush_ascii()
+            cjk_run.append(ch)
+        else:
+            flush_ascii()
+            flush_cjk()
+    flush_ascii()
+    flush_cjk()
+
     stopwords = {
-        "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好", "自己", "这", "为了", "因为", "所以", "但是", "而且", "可以", "以及", "通过", "进行", "对于", "一种", "同时",
+        "的", "了", "在", "是", "我", "有", "和", "就", "不", "人", "都", "一", "一个", "上", "也", "很", "到", "说", "要", "去", "你", "会", "着", "没有", "看", "好", "自己", "这",
+        "我们", "他们", "这个", "那个", "可以", "因为", "所以", "但是", "如果", "什么", "已经", "进行", "通过", "以及", "或者", "而且", "然后", "就是", "还是", "只是", "非常", "十分", "对于", "关于", "其中", "以上", "以下",
+        "是一", "它们", "这样", "那样", "这些", "那些", "时的", "的话", "这里", "那里", "哪里", "当时", "此时",
         "the", "and", "in", "of", "to", "for", "with", "on", "that", "this", "from", "are", "was", "were", "been", "has", "have", "had", "will", "would", "can", "could", "into", "also", "more", "such", "than", "other"
     }
-    return [w.lower() for w in words if w.lower() not in stopwords]
+    return [w for w in words if len(w) >= 2 and w not in stopwords]
 
 
 def calculate_tfidf(tokens: List[str], total_docs: int = 1) -> List[Tuple[str, float, int]]:
@@ -1139,25 +1172,25 @@ class ReaderEngineService:
         print(f"[RECALL] mindmap ready for book_id: {book_id}")
 
     # 5. annotation_manage 六元组
-    def annotation_manage(self, annot: Dict[str, Any]) -> int:
+    def annotation_manage(self, annotation: Dict[str, Any]) -> int:
         start = time.time()
-        annot_id = self.storage.save_annotation(annot)
+        annotation_id = self.storage.save_annotation(annotation)
         self.annotation_manage_metrics((time.time() - start) * 1000.0, 1)
-        self.annotation_manage_recall(annot_id)
-        return annot_id
+        self.annotation_manage_recall(annotation_id)
+        return annotation_id
 
     def annotation_manage_compensate(self, book_id: int):
         print(f"[COMPENSATE] Revert annotation for book_id: {book_id}")
 
-    def annotation_manage_fallback(self, annot: Dict[str, Any]) -> int:
+    def annotation_manage_fallback(self, annotation: Dict[str, Any]) -> int:
         print("[FALLBACK] Temporary memory queue for annotation")
         return 1
 
     def annotation_manage_metrics(self, duration_ms: float, count: int):
         print(f"[METRICS] annotation_manage in {duration_ms:.2f}ms")
 
-    def annotation_manage_recall(self, annot_id: int):
-        print(f"[RECALL] annotation updated for ID: {annot_id}")
+    def annotation_manage_recall(self, annotation_id: int):
+        print(f"[RECALL] annotation updated for ID: {annotation_id}")
 
     # 6. ai_companion_stream 六元组 (真实 LLM 请求调用与启发式兜底)
     def ai_companion_stream(self, book_id: int, template_type: str, selected_text: str, prompt: str) -> str:
@@ -1306,14 +1339,14 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
     engine = get_engine()
     payload = json.loads(payload_json) if payload_json else {}
 
-    if action == "doc.parse":
+    if action == "book.parse":
         return engine.doc_parse(payload.get("file_path", ""))
-    elif action in ("doc.list", "book.list"):
+    elif action == "book.list":
         return {"books": engine.storage.list_books()}
-    elif action in ("doc.delete", "book.delete"):
+    elif action == "book.deleted":
         engine.storage.delete_book(payload.get("book_id", 0))
         return {"status": "deleted", "book_id": payload.get("book_id", 0)}
-    elif action in ("doc.get", "book.detail"):
+    elif action == "book.get":
         book_id = payload.get("book_id", 1)
         book = engine.storage.get_book(book_id)
         sections = engine.storage.get_sections(book_id)
@@ -1321,7 +1354,7 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
     elif action in ("nlp.extract_keywords", "nlp.keyword_extract"):
         top_n = payload.get("top_k", payload.get("top_n", 30))
         return {"keywords": engine.nlp_keyword_extract(payload.get("book_id", 1), top_n)}
-    elif action in ("nlp.build_graph", "graph.build"):
+    elif action == "nlp.build_graph":
         book_id = payload.get("book_id", 1)
         keywords = engine.storage.get_keywords(book_id)
         if not keywords:
@@ -1337,7 +1370,7 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
     elif action == "mindmap.generate":
         return {"nodes": engine.mindmap_generate(payload.get("book_id", 1))}
     elif action == "annotation.save":
-        annot_id = engine.annotation_manage({
+        annotation_id = engine.annotation_manage({
             "book_id": payload.get("book_id", 1),
             "section_id": payload.get("section_id"),
             "color": payload.get("color", "#FFE066"),
@@ -1346,10 +1379,10 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
             "anchor_json": json.dumps(payload.get("anchor", {})),
             "ai_response": payload.get("ai_response")
         })
-        return {"annotation_id": annot_id, "status": "saved"}
+        return {"annotation_id": annotation_id, "status": "saved"}
     elif action == "annotation.list":
         return {"annotations": engine.storage.get_annotations(payload.get("book_id", 1))}
-    elif action == "annotation.delete":
+    elif action == "annotation.deleted":
         engine.storage.delete_annotation(payload.get("annotation_id", 0))
         return {"status": "deleted", "annotation_id": payload.get("annotation_id", 0)}
     elif action == "ai.companion_ask":

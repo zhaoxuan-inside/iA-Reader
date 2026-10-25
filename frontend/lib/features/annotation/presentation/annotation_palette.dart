@@ -16,13 +16,13 @@ class AnnotationPalette extends StatelessWidget {
   final VoidCallback onClose;
 
   const AnnotationPalette({
-    Key? key,
+    super.key,
     required this.selectedColorHex,
     required this.onColorSelected,
     required this.onStyleSelected,
     required this.onNoteRequested,
     required this.onClose,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +39,7 @@ class AnnotationPalette extends StatelessWidget {
         fontSize: 12.0,
         color: textColor,
         backgroundColor:
-            style == AnnotationStyle.highlight ? color.withOpacity(0.35) : null,
+            style == AnnotationStyle.highlight ? color.withValues(alpha: 0.35) : null,
         decoration: style == AnnotationStyle.halfHighlight ||
                 style == AnnotationStyle.underline ||
                 style == AnnotationStyle.wavy

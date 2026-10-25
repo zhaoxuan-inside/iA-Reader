@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ai_reader_frontend/features/annotation/domain/annotation_span_builder.dart';
 
-AnnotationRange _hl(int start, int end, [Color color = const Color(0x59CA8A04)]) =>
-    AnnotationRange(start: start, end: end, style: AnnotationStyle.highlight, color: color);
+// 默认色与 builder 的 withValues(alpha: 0.35) 精确一致
+// （旧 withOpacity 为字节舍入 0x59≈0.349，迁移精确 API 后以构造式对齐）
+AnnotationRange _hl(int start, int end, [Color color = const Color(0xFFCA8A04)]) =>
+    AnnotationRange(start: start, end: end, style: AnnotationStyle.highlight, color: color.withValues(alpha: 0.35));
 
 void main() {
   const text = '0123456789ABCDEF';
@@ -37,7 +39,7 @@ void main() {
       final children = span.children!;
       expect(children.map((c) => c.toPlainText()).toList(),
           ['01', '234', '5', '6789ABCDEF']);
-      expect((children[2] as TextSpan).style!.backgroundColor, Colors.red.withOpacity(0.35));
+      expect((children[2] as TextSpan).style!.backgroundColor, Colors.red.withValues(alpha: 0.35));
     });
 
     test('区间越界被夹紧，空区间被忽略', () {
@@ -62,7 +64,7 @@ void main() {
     test('下划线', () {
       final span = AnnotationSpanBuilder.build(
           text: text,
-          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.underline, color: Colors.blue)],
+          ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.underline, color: Colors.blue)],
           baseStyle: base);
       final s = (span.children![0] as TextSpan).style!;
       expect(s.decoration, TextDecoration.underline);
@@ -73,7 +75,7 @@ void main() {
     test('波浪线', () {
       final span = AnnotationSpanBuilder.build(
           text: text,
-          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.wavy, color: Colors.green)],
+          ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.wavy, color: Colors.green)],
           baseStyle: base);
       final s = (span.children![0] as TextSpan).style!;
       expect(s.decoration, TextDecoration.underline);
@@ -84,7 +86,7 @@ void main() {
     test('删除线', () {
       final span = AnnotationSpanBuilder.build(
           text: text,
-          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.strike, color: Colors.red)],
+          ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.strike, color: Colors.red)],
           baseStyle: base);
       expect((span.children![0] as TextSpan).style!.decoration, TextDecoration.lineThrough);
     });
@@ -92,13 +94,13 @@ void main() {
     test('加粗 / 斜体', () {
       final bold = AnnotationSpanBuilder.build(
           text: text,
-          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.bold, color: Colors.black)],
+          ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.bold, color: Colors.black)],
           baseStyle: base);
       expect((bold.children![0] as TextSpan).style!.fontWeight, FontWeight.w700);
 
       final italic = AnnotationSpanBuilder.build(
           text: text,
-          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.italic, color: Colors.black)],
+          ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.italic, color: Colors.black)],
           baseStyle: base);
       expect((italic.children![0] as TextSpan).style!.fontStyle, FontStyle.italic);
     });
@@ -106,13 +108,13 @@ void main() {
     test('半高亮：粗底线随 baseStyle.fontSize 缩放，不设背景', () {
       final span = AnnotationSpanBuilder.build(
           text: text,
-          ranges: [AnnotationRange(start: 0, end: 2, style: AnnotationStyle.halfHighlight, color: Colors.amber)],
+          ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.halfHighlight, color: Colors.amber)],
           baseStyle: const TextStyle(fontSize: 20.0));
       final s = (span.children![0] as TextSpan).style!;
       expect(s.backgroundColor, isNull);
       expect(s.decoration, TextDecoration.underline);
       expect(s.decorationThickness, closeTo(20.0 * 0.42, 0.01));
-      expect(s.decorationColor, Colors.amber.withOpacity(0.55));
+      expect(s.decorationColor, Colors.amber.withValues(alpha: 0.55));
     });
   });
 }

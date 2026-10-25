@@ -26,7 +26,8 @@ from backend.reader_engine import (
     build_co_occurrence
 )
 
-TEST_DB = "test_reader_suite.db"
+import tempfile
+TEST_DB = str(Path(tempfile.mkdtemp(prefix="ai_reader_core_")) / "test_reader_suite.db")  # /tmp 本地盘
 
 class TestReaderCoreEngine(unittest.TestCase):
     @classmethod
@@ -174,8 +175,8 @@ class TestReaderCoreEngine(unittest.TestCase):
 
     def test_08_ffi_ai_reader_invoke_envelope_contracts(self):
         """测试 FFI 统一 JSON 信封输入输出"""
-        # doc.list
-        res_str = ai_reader_invoke("doc.list", "{}")
+        # book.list
+        res_str = ai_reader_invoke("book.list", "{}")
         res = json.loads(res_str)
         self.assertEqual(res["code"], 0)
         self.assertEqual(res["message"], "success")

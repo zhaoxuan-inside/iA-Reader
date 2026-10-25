@@ -28,7 +28,7 @@ void main() {
 
 /// AI Reader 顶层 App
 class AIReaderApp extends StatefulWidget {
-  const AIReaderApp({Key? key}) : super(key: key);
+  const AIReaderApp({super.key});
 
   @override
   State<AIReaderApp> createState() => _AIReaderAppState();
@@ -110,13 +110,13 @@ class ReaderWorkbenchScreen extends StatefulWidget {
   final bool isDarkMode;
 
   const ReaderWorkbenchScreen({
-    Key? key,
+    super.key,
     required this.bridge,
     this.initialBookId = 1,
     required this.onBackToLibrary,
     required this.onToggleTheme,
     required this.isDarkMode,
-  }) : super(key: key);
+  });
 
   @override
   State<ReaderWorkbenchScreen> createState() => _ReaderWorkbenchScreenState();
@@ -217,7 +217,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
   Future<void> _loadDocumentData(int bookId) async {
     // 1. 加载文档章节与段落
-    final docRes = await widget.bridge.invoke('doc.get', {'book_id': bookId});
+    final docRes = await widget.bridge.invoke('book.get', {'book_id': bookId});
     if (docRes.isSuccess) {
       final docData = docRes.data;
       final sectionsData = (docData['sections'] as List<dynamic>?) ?? [];
@@ -421,7 +421,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   Future<void> _saveNote(String text) async {
     final editingId = _editingAnnotationId;
     if (editingId != null && editingId.isNotEmpty) {
-      await widget.bridge.invoke('annotation.update', {
+      await widget.bridge.invoke('annotation.updated', {
         'annotation_id': editingId,
         'note_text': text,
       });
@@ -527,7 +527,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
   /// 删除标注（task_13 D5）
   Future<void> _deleteAnnotation(String annotationId) async {
-    await widget.bridge.invoke('annotation.delete', {'annotation_id': annotationId});
+    await widget.bridge.invoke('annotation.deleted', {'annotation_id': annotationId});
     if (!mounted) return;
     setState(() {
       _annotations.removeWhere((a) => a.id == annotationId);
@@ -799,7 +799,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                 height: 44.0,
                                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                                 decoration: BoxDecoration(
-                                  color: surfaceBg.withOpacity(0.92),
+                                  color: surfaceBg.withValues(alpha: 0.92),
                                   border: Border(bottom: BorderSide(color: borderColor, width: 0.5)),
                                 ),
                                 child: Row(

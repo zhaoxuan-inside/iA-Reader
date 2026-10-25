@@ -67,8 +67,9 @@ pub struct ChatMessage {
 }
 
 /// 传输层 seam：生产实现走 ureq，测试注入 Mock，业务零网络污染。
-/// `Send` 约束：ReaderService 存放于静态 Mutex 中，跨线程共享要求传输层可移动。
-pub trait LlmClient: Send {
+/// `Send + Sync` 约束：ReaderService 以 &'static 直接共享（ffi.rs 全局单例），
+/// 跨线程并发调用要求传输层既可移动又可共享。
+pub trait LlmClient: Send + Sync {
     fn chat(&self, config: &LlmConfig, messages: &[ChatMessage]) -> Result<String, String>;
 
     /// 流式生成（task_17 D1）：on_delta 逐段回调，返回完整文本。
@@ -355,15 +356,29 @@ pub fn save_user_config(path: &Path, cfg: &LlmConfig) -> Result<(), String> {
 }
 
 /// 键级 merge：patch 覆盖 base 同名字段，缺省字段回落基线（语义对齐 Python dict.update）。
+/// 特判：api_key 等于掩码占位（前端未修改的回显值）时保留基线真实密钥，
+/// 防止把 "********" 落盘顶掉真密钥。
 pub fn overlay_config(base: &LlmConfig, patch: Option<&Value>) -> Result<LlmConfig, String> {
     let mut merged = serde_json::to_value(base).map_err(|e| format!("基线配置序列化失败: {}", e))?;
     if let Some(Value::Object(map)) = patch {
         let obj = merged.as_object_mut().ok_or("基线配置不是 JSON 对象")?;
         for (k, v) in map {
+            if k == "api_key" && v.as_str() == Some(API_KEY_MASK) {
+                continue;
+            }
             obj.insert(k.clone(), v.clone());
         }
     }
     serde_json::from_value(merged).map_err(|e| format!("配置字段非法: {}", e))
+}
+
+/// api_key 回显掩码（PRD NFR「密钥不回显明文」：真实值仅存本机配置文件，
+/// 不进入 config.get 等任何返回通道）
+pub const API_KEY_MASK: &str = "********";
+
+/// 尾号提示：设置界面显示「已配置（尾号 abcd）」用，不泄露可复原信息
+pub fn api_key_tail(cfg: &LlmConfig) -> String {
+    cfg.api_key.chars().rev().take(4).collect::<Vec<_>>().into_iter().rev().collect()
 }
 
 /// 连接测试：单次真实调用（不重试），返回时延毫秒；无 key 直接拒绝，错误信息透传 UI。

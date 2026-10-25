@@ -27,7 +27,7 @@ class CompanionDrawer extends StatefulWidget {
   final VoidCallback? onOpenSettings;
 
   const CompanionDrawer({
-    Key? key,
+    super.key,
     required this.selectedText,
     required this.currentTemplate,
     required this.initialAnalysis,
@@ -36,7 +36,7 @@ class CompanionDrawer extends StatefulWidget {
     required this.onAskFollowUp,
     this.offlineMode = false,
     this.onOpenSettings,
-  }) : super(key: key);
+  });
 
   @override
   State<CompanionDrawer> createState() => _CompanionDrawerState();
@@ -149,12 +149,11 @@ class _CompanionDrawerState extends State<CompanionDrawer> {
                             setState(() => _isSaving = true);
                             await widget.onSaveAnnotation(
                                 _dialogues.map((d) => d.content).join('\n\n'));
-                            if (mounted) {
-                              setState(() => _isSaving = false);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('已持久化存为段落边注')),
-                              );
-                            }
+                            if (!mounted) return;
+                            setState(() => _isSaving = false);
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              const SnackBar(content: Text('已持久化存为段落边注')),
+                            );
                           },
                   ),
                   IconButton(

@@ -12,12 +12,12 @@ class AiKeyboardPanel extends StatelessWidget {
   final VoidCallback onClose;
 
   const AiKeyboardPanel({
-    Key? key,
+    super.key,
     required this.targetHint,
     required this.onTemplateSelected,
     required this.onOpenCompanion,
     required this.onClose,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

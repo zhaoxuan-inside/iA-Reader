@@ -95,7 +95,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: AnnotationManagerModal(
-          entries: [
+          entries: const [
             AnnotationListEntry(
               item: AnnotationItem(
                 id: 'a1',

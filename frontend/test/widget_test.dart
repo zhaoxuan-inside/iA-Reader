@@ -4,7 +4,6 @@ import 'package:ai_reader_frontend/main.dart';
 import 'package:ai_reader_frontend/core/theme/reader_theme.dart';
 import 'package:ai_reader_frontend/features/selection_pill/presentation/floating_action_pill.dart';
 import 'package:ai_reader_frontend/features/reader/presentation/controllers/focus_mode_controller.dart';
-import 'package:ai_reader_frontend/features/library/presentation/library_screen.dart';
 import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
 import 'package:ai_reader_frontend/features/settings/presentation/settings_dialog.dart';
 

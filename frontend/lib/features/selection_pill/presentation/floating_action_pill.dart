@@ -22,11 +22,11 @@ class FloatingActionPill extends StatelessWidget {
   final VoidCallback? onDismiss;
 
   const FloatingActionPill({
-    Key? key,
+    super.key,
     required this.onTemplateSelected,
     this.onAnnotationPalette,
     this.onDismiss,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

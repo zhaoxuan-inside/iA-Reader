@@ -34,7 +34,7 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
         self.assertIn("#007AFF", content, "必须定义亮色 iA 标志性光标蓝")
         self.assertIn("#38BDF8", content, "必须定义暗色天青蓝")
         self.assertIn("65%", content, "必须定义段落级弱化 65% 透明度")
-        self.assertIn("680px ~ 720px", content, "必须定义黄金版心定宽区间")
+        self.assertIn("680px~720px", content, "必须定义黄金版心定宽区间")
 
     def test_02_flutter_codebase_structure(self):
         """验证 Flutter 项目结构与关键源文件齐套"""
@@ -84,11 +84,11 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
 
         pill_path = self.frontend_dir / "lib/features/selection_pill/presentation/floating_action_pill.dart"
         pill_code = pill_path.read_text(encoding="utf-8")
-        self.assertIn("⚡️ 通俗", pill_code)
-        self.assertIn("🔗 逻辑", pill_code)
-        self.assertIn("🧐 批判", pill_code)
-        self.assertIn("📖 术语", pill_code)
-        self.assertIn("🖍 高亮", pill_code)
+        self.assertIn("'通俗'", pill_code)
+        self.assertIn("'逻辑'", pill_code)
+        self.assertIn("'批判'", pill_code)
+        self.assertIn("'术语'", pill_code)
+        self.assertIn("'高亮'", pill_code)
 
     def test_06_ffi_bridge_six_tuple_envelope_compliance(self):
         """验证 FFI 桥接客户端与六元组信封结构的兼容性"""
@@ -98,7 +98,7 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
         self.assertIn("class InvokeEnvelope", bridge_code, "必须定义统一六元组信封类")
         self.assertIn("ai.companion_ask", bridge_code, "必须支持伴读调用 action")
         self.assertIn("annotation.save", bridge_code, "必须支持批注持久化 action")
-        self.assertIn("doc.get", bridge_code, "必须支持获取文档章节与段落 action")
+        self.assertIn("book.get", bridge_code, "必须支持获取文档章节与段落 action")
         self.assertIn("mindmap.generate", bridge_code, "必须支持导图生成 action")
 
     def test_07_flutter_linux_runner_structure(self):
@@ -121,9 +121,12 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
         drawer_path = self.frontend_dir / "lib/features/toc_mindmap/presentation/toc_mindmap_drawer.dart"
         code = drawer_path.read_text(encoding="utf-8")
 
-        self.assertIn("章节 AST 目录", code, "必须具备章节 AST 目录树 Tab")
-        self.assertIn("知识导图 & 词云", code, "必须具备全书知识导图与词云 Tab")
-        self.assertIn("260.0", code, "抽屉宽度必须遵循 260px 规范")
+        self.assertIn("章节目录", code, "必须具备章节目录树 Tab")
+        self.assertIn("图形化知识导图", code, "必须具备全书知识导图 Tab")
+        self.assertIn("权重词云", code, "必须具备权重词云 Tab")
+        # task_15 改版：导航抽屉为 FrostedModal 悬浮面板，宽度规约在宿主 main.dart（360px）
+        main_code = (WORKSPACE_ROOT / "frontend/lib/main.dart").read_text(encoding="utf-8")
+        self.assertIn("width: 360.0", main_code, "导航悬浮面板宽度必须遵循 360px 规范")
         self.assertIn("onSectionSelected", code, "必须支持点击章节跳转")
         self.assertIn("onKeywordSelected", code, "必须支持点击核心关键词")
 
@@ -146,7 +149,7 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
 
         # 4. 伴读抽屉原位追问与边注保存
         self.assertIn("CompanionDrawer", code)
-        self.assertIn("_paragraphAnnotations", code)
+        self.assertIn("_annotations", code)
 
         # 5. 键盘全导航
         self.assertIn("LogicalKeyboardKey.keyD", code)
@@ -168,11 +171,11 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
         lib.ai_reader_invoke.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
         lib.ai_reader_free_string.argtypes = [ctypes.c_char_p]
 
-        res_bytes = lib.ai_reader_invoke(b"doc.list", b"{}")
+        res_bytes = lib.ai_reader_invoke(b"book.list", b"{}")
         self.assertIsNotNone(res_bytes)
         res_str = res_bytes.decode("utf-8")
         data = json.loads(res_str)
-        self.assertEqual(data.get("code"), 0, "C-ABI 动态库调用 doc.list 必须返回 code 0")
+        self.assertEqual(data.get("code"), 0, "C-ABI 动态库调用 book.list 必须返回 code 0")
         self.assertIn("books", data.get("data", {}))
 
 

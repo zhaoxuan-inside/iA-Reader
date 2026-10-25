@@ -62,7 +62,7 @@ class TocMindmapDrawer extends StatefulWidget {
   final VoidCallback? onClose;
 
   const TocMindmapDrawer({
-    Key? key,
+    super.key,
     required this.sections,
     required this.mindmapNodes,
     required this.keywords,
@@ -71,7 +71,7 @@ class TocMindmapDrawer extends StatefulWidget {
     required this.onKeywordSelected,
     this.onNodeSelected,
     this.onClose,
-  }) : super(key: key);
+  });
 
   @override
   State<TocMindmapDrawer> createState() => _TocMindmapDrawerState();
