@@ -175,6 +175,21 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             }
             Ok(json!({ "books": payload }))
         }
+        "book.delete" => {
+            // FEAT-001 书库管理：删除书籍并清理批注/伴读会话/章节句子等派生数据
+            let book_id = val
+                .get("book_id")
+                .and_then(|v| v.as_i64())
+                .ok_or("book.delete requires book_id")?;
+            let deleted = service_guard
+                .storage
+                .delete_book_full(book_id)
+                .map_err(|e| e.to_string())?;
+            if !deleted {
+                return Err(format!("book not found: {}", book_id));
+            }
+            Ok(json!({ "status": "deleted", "book_id": book_id }))
+        }
         "doc.get" => {
             let book_id = val.get("book_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let meta = service_guard.storage.get_book(book_id).map_err(|e| e.to_string())?;

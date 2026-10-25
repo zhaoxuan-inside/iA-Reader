@@ -81,14 +81,18 @@ class ReaderEngineBridge {
   // 内存中模拟存储（用于离线开发或无动态库环境测试）
   final List<Map<String, dynamic>> _inMemoryAnnotations = [];
 
+  // mock 书库删除集（book.delete）：doc.list 据此过滤静态演示书目
+  final Set<String> _inMemoryDeletedBooks = {};
+
   // 流式伴读注册表 mock（task_17 D4）：start 即 done 的确定性快照
   final Map<String, Map<String, dynamic>> _inMemoryStreams = {};
 
   /// 清空进程内 mock 状态（@visibleForTesting）：桥接为单例工厂，
-  /// 内存标注跨同一进程内的用例共享，各 e2e harness pump 前调用以保证用例隔离。
+  /// 内存标注/删除集/流注册表跨同一进程内的用例共享，各 e2e harness pump 前调用以保证用例隔离。
   @visibleForTesting
   void resetMockStateForTest() {
     _inMemoryAnnotations.clear();
+    _inMemoryDeletedBooks.clear();
     _inMemoryStreams.clear();
   }
 
@@ -399,30 +403,46 @@ class ReaderEngineBridge {
         },
         metrics: {'duration_ms': 5, 'timestamp': now},
       );
+    } else if (action == 'book.delete') {
+      final id = payload['book_id']?.toString();
+      if (id == null) {
+        return InvokeEnvelope(
+          code: 50001,
+          message: 'book.delete requires book_id',
+          data: {},
+          metrics: {'duration_ms': 1, 'timestamp': now},
+        );
+      }
+      _inMemoryDeletedBooks.add(id);
+      return InvokeEnvelope(
+        code: 0,
+        message: 'Deleted',
+        data: {'status': 'deleted', 'book_id': int.tryParse(id) ?? id},
+        metrics: {'duration_ms': 2, 'timestamp': now},
+      );
     } else if (action == 'doc.list') {
+      final books = <Map<String, dynamic>>[
+        {
+          'id': 1,
+          'title': '分布式系统高可靠存储与认知解析',
+          'author': 'AI Reader 架构组',
+          'format': 'md',
+          'total_pages': 1,
+          'sections_count': 3,
+        },
+        {
+          'id': 2,
+          'title': '深度学习与认知推理实战指南',
+          'author': 'AI Lab',
+          'format': 'txt',
+          'total_pages': 120,
+          'sections_count': 12,
+        },
+      ].where((b) => !_inMemoryDeletedBooks.contains(b['id'].toString())).toList();
       return InvokeEnvelope(
         code: 0,
         message: 'success',
-        data: {
-          'books': [
-            {
-              'id': 1,
-              'title': '分布式系统高可靠存储与认知解析',
-              'author': 'AI Reader 架构组',
-              'format': 'md',
-              'total_pages': 1,
-              'sections_count': 3,
-            },
-            {
-              'id': 2,
-              'title': '深度学习与认知推理实战指南',
-              'author': 'AI Lab',
-              'format': 'txt',
-              'total_pages': 120,
-              'sections_count': 12,
-            },
-          ]
-        },
+        data: {'books': books},
         metrics: {'duration_ms': 1, 'timestamp': now},
       );
     } else if (action == 'doc.get') {

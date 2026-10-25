@@ -119,6 +119,43 @@ class TestFfiContract(unittest.TestCase):
         self.assertEqual(len(doc["sections"]), 3)
 
     # ------------------------------------------------------------------
+    # 契约 6：book.delete——删除后书库消失、派生数据与批注一并清理、重复删除报错
+    # ------------------------------------------------------------------
+    def test_book_delete_lifecycle(self):
+        book_id, _ = self._import_sample_book()
+        # 挂一条批注，验证删除书籍时连带清理
+        code, data, msg = self.invoke("annotation.save", {
+            "book_id": book_id,
+            "style": "highlight",
+            "note_text": "随书删除探针",
+            "anchor": {"paragraph_id": "p1"},
+        })
+        self.assertEqual(code, 0, msg)
+
+        code, data, msg = self.invoke("book.delete", {"book_id": book_id})
+        self.assertEqual(code, 0, msg)
+        self.assertEqual(data["status"], "deleted")
+
+        # 书库不再出现
+        code, data, msg = self.invoke("doc.list", {})
+        self.assertEqual(code, 0, msg)
+        self.assertFalse(
+            any(b["id"] == book_id for b in data["books"]), "删除后书库不应再列出该书"
+        )
+        # 派生数据与批注一并清理（doc.get 章节为空、annotation.list 为空）
+        code, doc, msg = self.invoke("doc.get", {"book_id": book_id})
+        self.assertEqual(code, 0)
+        self.assertEqual(doc["sections"], [])
+        code, data, msg = self.invoke("annotation.list", {"book_id": book_id})
+        self.assertEqual(code, 0, msg)
+        self.assertEqual(data["annotations"], [])
+
+        # 重复删除：显式报错
+        code, _, msg = self.invoke("book.delete", {"book_id": book_id})
+        self.assertNotEqual(code, 0)
+        self.assertIn("not found", msg)
+
+    # ------------------------------------------------------------------
     # 契约 1：doc.list 必须返回信封 Map（data['books']），且章节计数真实
     # 前端消费点：library_screen.dart _loadBooks 取 res.data['books']
     # ------------------------------------------------------------------
@@ -161,6 +198,13 @@ class TestFfiContract(unittest.TestCase):
             self.assertIn("count", k, "词云依赖 count 字段（Rust 原生 frequency 前端读不到）")
             self.assertIsInstance(k["score"], (int, float))
             self.assertIsInstance(k["count"], int)
+            # 中文书关键词必须是 ≥2 字词（此前单字切分令词云全是孤立汉字）
+            word = k["word"]
+            if any("\u4e00" <= ch <= "\u9fff" for ch in word):
+                self.assertGreaterEqual(
+                    len(word), 2,
+                    f"中文关键词不得为单字（CJK bigram 分词契约）: {word}",
+                )
 
     # ------------------------------------------------------------------
     # 契约 3：导图节点字段形状

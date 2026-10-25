@@ -84,6 +84,37 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  /// 删除书籍（FEAT-001 书库管理）：确认后 book.delete（引擎连带清理批注/章节等派生数据）
+  void _confirmDeleteBook(LibraryBookItem book) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('删除文档', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold)),
+          content: Text(
+            '将从书库移除《${book.title}》及其批注与阅读数据。此操作不可撤销。',
+            style: const TextStyle(fontSize: 13.5, height: 1.6),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: const Color(0xFFE5484D)),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await widget.bridge.invoke('book.delete', {'book_id': book.id});
+                await _loadBooks();
+              },
+              child: const Text('删除', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _showImportFileDialog() {
     final controller = TextEditingController(text: '/path/to/sample_technical_doc.md');
     showDialog(
@@ -365,6 +396,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                         ),
                                       ),
                                       Icon(Icons.arrow_forward_ios, size: 14.0, color: textSecondary.withOpacity(0.4)),
+                                      const SizedBox(width: 8.0),
+                                      // 书库管理：删除文档（确认框防误触，见 _confirmDeleteBook）
+                                      GestureDetector(
+                                        onTap: () => _confirmDeleteBook(book),
+                                        child: Tooltip(
+                                          message: '删除文档',
+                                          child: Icon(
+                                            Icons.delete_outline,
+                                            size: 17.0,
+                                            color: textSecondary.withOpacity(0.55),
+                                          ),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),

@@ -126,3 +126,43 @@
 2. staging 树默认迁至本地盘 `/tmp/ai-reader-build-deb`（`BUILD_DEB_ROOT` 可覆盖）——共享挂载不支持符号链接，原脚本在 ln 步骤必挂。
 3. 补装 `hicolor/scalable/apps/ai-reader.svg` 矢量图标（e2e 断言存在但从未打包）。
 4. `test_installed_workbench_e2e.py` test_02 完整性断言同步至 launcher 布局（入口 shim/launcher/bundle/engine/desktop/双图标 + shim 委托校验）。
+
+---
+
+# 变更记录：CFX-004 书库删除 + 中文分词质量 + 伴读轮询取消（v0.0.8）
+
+- **日期**：2026-10-25
+- **intent / change_size / work_mode**：`BUILD` / `M` / `IMPLEMENT`
+- **触发**：开发者指示继续开发与测试；按遗留清单优先级取用户价值最高的三项。
+
+## 交付内容
+
+1. **书库删除（FEAT-001 补全，前后端双缺失→闭环）**：
+   - Rust `book.delete` FFI action（`ffi.rs`）+ `storage.delete_book_full`：物理清理批注/伴读会话/章节/句子/关键词/关系/导图，软删 `book_meta`（保留审计轨迹）；重复删除显式报 `book not found`；
+   - Dart 书库行删除图标（Tooltip「删除文档」）+ 确认框（不可撤销警示，取消/删除双路径）；mock 引擎新增 `book.delete` 处理与删除集（`resetMockStateForTest` 一并清理）；
+   - 新增 `frontend/test/library_delete_test.dart`（取消保留/确认移除双路径）；书库 golden 基线按新 UI 重生成。
+2. **中文分词质量（FEAT-009 词云此前对中文基本不可用）**：
+   - `nlp.rs tokenize` 重写为 **CJK bigram 切词**（Lucene CJKAnalyzer 同款策略，无词典依赖）：CJK 连续段滑窗二元，真实词（日志/事务/快照）因跨语境重复被 TF-IDF/TextRank 自然置顶，拼接 bigram 权重自然衰减；停用词表扩充功能 bigram（是一/这里/通过 等 40+）；
+   - 此前按单字切分且 `len()>1` 按字节误判（单汉字 3 字节绕过过滤），词云全是孤立汉字；
+   - 人工抽检（分布式系统样例书）：Top 关键词 `日志(6)/事务(4)/快照(3)/截断/写入/读取/阻塞` 全为真实词；
+   - 契约测试新增断言：中文关键词不得为单字。
+3. **伴读轮询代际守卫（`main.dart _triggerCompanion`）**：
+   - 捕获会话代际 + 起始 book_id，start/每轮 poll/终态三处检查 `stale()`；换书、组件销毁、新一轮触发均立即作废旧轮询——此前旧流渐进渲染会覆盖新一轮伴读内容，且关抽屉/换书后最多空转 4 分钟。
+
+## 回归证据
+
+| 套件 | 结果 |
+|---|---|
+| `cargo test`（含 5 个新分词单测） | 39/39 |
+| FFI 契约测试（+book.delete 生命周期 +中文单字断言） | 8/8 |
+| Rust 引擎全旅程 e2e | 5/5 |
+| GUI integration_test（真 .so 驱动真界面） | 1/1 |
+| `flutter test`（+删除流程用例；golden 按新 UI 重生成） | 58/58 |
+| 版本对齐 0.0.8 六处 + deb 重打 + `dpkg -i` 装机 | ✓ |
+| 装机态 e2e（0.0.8） | 3/3 |
+
+## 遗留与登记（更新）
+
+- `book.delete` 沿用既有 `.delete` 动作命名（与 `annotation.delete` 一致）；事件词态/`doc→book` 实体统一的重命名批次新增 1 项待改（原 7 项）。
+- 拼接 bigram（如「检查点」→检查/查点）为无词典方案的固有噪声，权重已自然靠后；如需消除需引入词典分词（Phase 2 评估）。
+- Python 引擎 `tokenize` 仍为 2 字以上连续段正则，与 Rust bigram 行为分叉（双引擎契约单源化切片处理）。

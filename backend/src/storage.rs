@@ -266,6 +266,38 @@ impl SqliteStorage {
         Ok(())
     }
 
+    /// 删除书籍（FEAT-001 书库管理）：先物理清理批注/伴读会话/派生数据，再软删主记录。
+    /// 软删保留 book_meta 行以维持审计轨迹；派生行无独立消费价值，直接清除。
+    pub fn delete_book_full(&self, id: i64) -> Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM book_meta WHERE id = ?1 AND is_del = 0",
+                params![id],
+                |row| row.get::<_, i64>(0),
+            )
+            .map(|n| n > 0)?;
+        if !exists {
+            return Ok(false);
+        }
+        for table in [
+            "annotation",
+            "ai_conversation",
+            "book_section",
+            "sentence_node",
+            "keyword_node",
+            "keyword_relation",
+            "mindmap_node",
+        ] {
+            conn.execute(&format!("DELETE FROM {} WHERE book_id = ?1", table), params![id])?;
+        }
+        conn.execute(
+            "UPDATE book_meta SET is_del = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(true)
+    }
+
     /// 返回按入参顺序落库后的真实章节 id（sentence_node.section_id 外键需要）
     pub fn save_sections(&self, sections: &[BookSection]) -> Result<Vec<i64>> {
         let conn = self.conn.lock().unwrap();

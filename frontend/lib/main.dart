@@ -151,6 +151,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   CognitiveTemplateType _activeTemplate = CognitiveTemplateType.general;
   // 最近一次伴读响应是否为离线降级卡片（驱动抽屉内"立即配置"提示）
   bool _companionOffline = false;
+  // 伴读会话代际：每次新触发 +1；轮询循环发现代际或书目变化即作废，
+  // 防止旧流的渐进渲染/终态覆盖新一轮伴读（关抽屉/换书后也不再空转）
+  int _companionSession = 0;
   Offset? _selectionPosition;
   String? _selectedTextCache;
   String? _selectedParagraphIdCache;
@@ -298,6 +301,10 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   }
 
   void _triggerCompanion(String paragraphId, String text, CognitiveTemplateType template) async {
+    final session = ++_companionSession;
+    final bookIdAtStart = _currentBookId;
+    bool stale() => !mounted || session != _companionSession || _currentBookId != bookIdAtStart;
+
     setState(() {
       _selectionPosition = null;
       _activeTemplate = template;
@@ -308,10 +315,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
     // 流式伴读（task_17 D4）：start 拿 request_id，260ms 轮询渐进渲染，done 落终态
     final startRes = await widget.bridge.invoke('ai.companion_start', {
-      'book_id': _currentBookId,
+      'book_id': bookIdAtStart,
       'template_type': template.templateKey,
       'selected_text': text,
     });
+    if (stale()) return;
     final requestId = startRes.data['request_id']?.toString() ?? '';
 
     var finalText = '解析完成';
@@ -321,6 +329,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         final poll = await widget.bridge.invoke('ai.companion_poll', {
           'request_id': requestId,
         });
+        if (stale()) return;
         final partial = (poll.data['partial'] ?? '') as String;
         final done = poll.data['done'] == true;
         if (mounted && partial.isNotEmpty) {
@@ -335,10 +344,11 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     } else {
       // 兜底：旧阻塞契约（engine 未升级时）
       final res = await widget.bridge.invoke('ai.companion_ask', {
-        'book_id': _currentBookId,
+        'book_id': bookIdAtStart,
         'template_type': template.templateKey,
         'selected_text': text,
       });
+      if (stale()) return;
       finalText = (res.data['response'] ?? res.data['analysis'] ?? '解析完成') as String;
     }
 
