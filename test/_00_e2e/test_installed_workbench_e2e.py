@@ -49,18 +49,26 @@ class TestInstalledWorkbenchE2E(unittest.TestCase):
         self.assertIn(CURRENT_VERSION, res.stdout)
 
     def test_02_system_installed_files_integrity(self):
-        """验证系统全局路径中已安装的可执行程序、桌面图标与启动脚本"""
-        launcher = Path("/usr/bin/ai_reader")
-        app_entry = Path("/usr/lib/ai-reader/ai_reader")
+        """验证系统全局路径中已安装的可执行程序、桌面图标与启动脚本（launcher 架构布局）"""
+        entry = Path("/usr/bin/ai_reader")                            # 稳定入口 shim
+        app_launcher = Path("/usr/lib/ai-reader/ai_reader_app.py")    # CLI + GUI 启动器
+        app_entry = Path("/usr/lib/ai-reader/bundle/ai_reader")       # Flutter 主执行程序
+        engine_lib = Path("/usr/lib/ai-reader/lib/libreader_core.so")  # Rust 引擎
         desktop_entry = Path("/usr/share/applications/ai-reader.desktop")
         icon_png = Path("/usr/share/icons/hicolor/512x512/apps/ai-reader.png")
         icon_svg = Path("/usr/share/icons/hicolor/scalable/apps/ai-reader.svg")
 
-        self.assertTrue(launcher.exists(), "必须安装 /usr/bin/ai_reader 系统可执行文件")
-        self.assertTrue(app_entry.exists(), "必须安装 /usr/lib/ai-reader/ai_reader 主执行程序")
+        self.assertTrue(entry.exists(), "必须安装 /usr/bin/ai_reader 系统入口")
+        self.assertTrue(app_launcher.exists(), "必须安装 /usr/lib/ai-reader/ai_reader_app.py 启动器")
+        self.assertTrue(app_entry.exists(), "必须安装 /usr/lib/ai-reader/bundle/ai_reader Flutter 主执行程序")
+        self.assertTrue(engine_lib.exists(), "必须安装 Rust 引擎动态库 libreader_core.so")
         self.assertTrue(desktop_entry.exists(), "必须安装 /usr/share/applications/ai-reader.desktop 桌面启动器")
         self.assertTrue(icon_png.exists(), "必须安装 512px PNG 桌面图标")
         self.assertTrue(icon_svg.exists(), "必须安装 SVG 矢量桌面图标")
+
+        # 入口 shim 委托真实 launcher
+        shim_content = entry.read_text(encoding="utf-8")
+        self.assertIn("ai_reader_app.py", shim_content, "/usr/bin/ai_reader 应委托 ai_reader_app.py")
 
         # 验证 .desktop 内容
         desktop_content = desktop_entry.read_text(encoding="utf-8")

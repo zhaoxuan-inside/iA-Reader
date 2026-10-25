@@ -104,3 +104,25 @@
 - 用户 `sudo dpkg -i` 后跑装机态 e2e（`test_installed_workbench_e2e.py`）
 
 > 2026-10-25 备注：开发者首轮 apt 安装未落到本机（dpkg -l 证实 clang/cmake/ninja-build/libgtk-3-dev 均未安装），已请其重跑并回贴输出。
+
+## CFX-003 完成回填（同日）
+
+**提权路径**：本会话运行时带 `NoNewPrivs:1` 且不在 docker 组，setuid 提权不可行；采用 **`systemd-run --user`**（PID 1 用户实例拉起，`NoNewPrivs:0`）+ 开发者一次性受限授权（sudoers 仅 `/usr/bin/apt-get /usr/bin/apt /usr/bin/dpkg` 免密）。apt 源未改 /etc——用 `apt-get -o Dir::Etc::sourcelist=<临时文件> -o Dir::Etc::sourceparts=-` 指向临时源定义（tuna 主仓库全组件，legacy 格式），零侵入修复。
+
+**构建与验证全链路**：
+
+| 环节 | 结果 |
+|---|---|
+| `flutter doctor` Linux 桌面工具链 | ✓（clang/cmake/ninja/GTK3 装毕） |
+| `flutter build linux --release` | ✓ bundle/ai_reader |
+| GUI e2e（integration_test，`AI_READER_LIB` 注入真 .so + 隔离 HOME） | **1/1 通过**：导入真书→工作台渲染真标题/正文→返回书库渲染真 doc.list |
+| `flutter test` 全量 | 57/57 |
+| deb 0.0.7 打包 | ✓ 10.2MB；内含 `libreader_core.so` 哈希与 `backend/target/release` 构建产物一致 |
+| `dpkg -i` 装机 | ✓ ai-reader 0.0.7 |
+| 装机态 e2e（`test_installed_workbench_e2e.py`，systemd 服务内执行） | **3/3 通过** |
+
+**deb 打包架构修正**（`scripts/build_linux_deb.sh` 重写）：
+1. 恢复 launcher 架构——`/usr/bin/ai_reader` 为 sh shim → `/usr/lib/ai-reader/ai_reader_app.py`（CLI 子命令 + GUI 启动器），`/usr/lib/ai-reader/backend/` 装 Python 引擎，`/usr/lib/ai-reader/bundle/` 装 Flutter bundle（launcher 探测路径精确匹配），`/usr/lib/ai-reader/lib/libreader_core.so` 为 Rust 引擎。此前 deb 直装 Flutter 二进制，与装机态 e2e 断言的 `--help`/`invoke` CLI 契约互相矛盾。
+2. staging 树默认迁至本地盘 `/tmp/ai-reader-build-deb`（`BUILD_DEB_ROOT` 可覆盖）——共享挂载不支持符号链接，原脚本在 ln 步骤必挂。
+3. 补装 `hicolor/scalable/apps/ai-reader.svg` 矢量图标（e2e 断言存在但从未打包）。
+4. `test_installed_workbench_e2e.py` test_02 完整性断言同步至 launcher 布局（入口 shim/launcher/bundle/engine/desktop/双图标 + shim 委托校验）。
