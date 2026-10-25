@@ -456,12 +456,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
       _isAnnotationPaletteOpen = false;
       _clearSelection();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('已应用标注：${style.label}'),
-        duration: const Duration(milliseconds: 1200),
-      ),
-    );
+    // 反馈即所见：标注内联渲染 + 面板收起已是确认（验收：不弹底部提示条）
   }
 
   /// 高亮 = 默认琥珀色的直通快路径（胶囊「高亮」按钮，不经面板）
