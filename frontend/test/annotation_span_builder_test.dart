@@ -105,16 +105,17 @@ void main() {
       expect((italic.children![0] as TextSpan).style!.fontStyle, FontStyle.italic);
     });
 
-    test('半高亮：粗底线随 baseStyle.fontSize 缩放，不设背景', () {
+    test('半高亮：背景带 shader 只画行框下半，与高亮同观感', () {
       final span = AnnotationSpanBuilder.build(
           text: text,
           ranges: [const AnnotationRange(start: 0, end: 2, style: AnnotationStyle.halfHighlight, color: Colors.amber)],
-          baseStyle: const TextStyle(fontSize: 20.0));
+          baseStyle: const TextStyle(fontSize: 20.0, height: 1.8));
       final s = (span.children![0] as TextSpan).style!;
+      // 背景带方案：无装饰线，背景 Paint 携带「上透明/下实」渐变 shader
+      expect(s.decoration, isNull);
       expect(s.backgroundColor, isNull);
-      expect(s.decoration, TextDecoration.underline);
-      expect(s.decorationThickness, closeTo(20.0 * 0.42, 0.01));
-      expect(s.decorationColor, Colors.amber.withValues(alpha: 0.55));
+      expect(s.background, isNotNull);
+      expect(s.background!.shader, isNotNull);
     });
   });
 }

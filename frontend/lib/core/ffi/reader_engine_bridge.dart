@@ -81,8 +81,11 @@ class ReaderEngineBridge {
   // 内存中模拟存储（用于离线开发或无动态库环境测试）
   final List<Map<String, dynamic>> _inMemoryAnnotations = [];
 
-  // mock 书库删除集（book.delete）：doc.list 据此过滤静态演示书目
+  // mock 书库删除集（book.deleted）：book.list 据此过滤静态演示书目
   final Set<String> _inMemoryDeletedBooks = {};
+
+  // mock 应用配置（settings.*）：主题/上次书目等 GUI 偏好
+  final Map<String, dynamic> _inMemorySettings = {};
 
   // 流式伴读注册表 mock（task_17 D4）：start 即 done 的确定性快照
   final Map<String, Map<String, dynamic>> _inMemoryStreams = {};
@@ -93,6 +96,7 @@ class ReaderEngineBridge {
   void resetMockStateForTest() {
     _inMemoryAnnotations.clear();
     _inMemoryDeletedBooks.clear();
+    _inMemorySettings.clear();
     _inMemoryStreams.clear();
   }
 
@@ -402,6 +406,24 @@ class ReaderEngineBridge {
           ]
         },
         metrics: {'duration_ms': 5, 'timestamp': now},
+      );
+    } else if (action == 'settings.get') {
+      return InvokeEnvelope(
+        code: 0,
+        message: 'success',
+        data: {'settings': Map<String, dynamic>.from(_inMemorySettings)},
+        metrics: {'duration_ms': 1, 'timestamp': now},
+      );
+    } else if (action == 'settings.save') {
+      final incoming = payload['settings'];
+      if (incoming is Map<String, dynamic>) {
+        _inMemorySettings.addAll(incoming);
+      }
+      return InvokeEnvelope(
+        code: 0,
+        message: 'Saved',
+        data: {'status': 'saved', 'count': _inMemorySettings.length},
+        metrics: {'duration_ms': 2, 'timestamp': now},
       );
     } else if (action == 'book.deleted') {
       final id = payload['book_id']?.toString();

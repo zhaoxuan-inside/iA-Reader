@@ -62,6 +62,7 @@ snapshot = {
     "books": invoke("book.list", {})["data"]["books"],
     "annotations": invoke("annotation.list", {"book_id": int(sys.argv[2])})["data"]["annotations"],
     "config": invoke("config.get", {})["data"]["config"],
+    "settings": invoke("settings.get", {})["data"]["settings"],
 }
 with open(sys.argv[3], "w", encoding="utf-8") as f:
     json.dump(snapshot, f, ensure_ascii=False)
@@ -329,6 +330,20 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
             snapshot["config"]["endpoint"], "https://api.deepseek.com/v1",
             "重启后配置应可加载",
         )
+
+        # 应用配置(主题/上次书目)重启留存
+        code, data, msg, _ = self.invoke("settings.save", {
+            "settings": {"theme_mode": "light", "last_book_id": self.book_id},
+        })
+        self.assertEqual(code, 0, msg)
+        proc = subprocess.run(
+            [sys.executable, "-c", RESTART_PROBE_SNIPPET, str(LIB_PATH), str(self.book_id), str(self.home / "restart_probe2.json")],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+        self.assertEqual(proc.returncode, 0, f"二次重启探针失败: {proc.stderr[-1500:]}")
+        snapshot2 = json.loads((self.home / "restart_probe2.json").read_text(encoding="utf-8"))
+        self.assertEqual(snapshot2["settings"].get("theme_mode"), "light", "应用配置应跨进程留存")
+        self.assertEqual(snapshot2["settings"].get("last_book_id"), str(self.book_id))
 
 
 if __name__ == "__main__":

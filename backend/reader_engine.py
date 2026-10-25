@@ -252,6 +252,16 @@ class StorageManager:
                 latency_ms REAL NOT NULL DEFAULT 0.0,
                 FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                value TEXT NOT NULL
+            );
             """
         conn.executescript(sql)
         conn.close()
@@ -288,6 +298,31 @@ class StorageManager:
         rows = cur.fetchall()
         conn.close()
         return [dict(r) for r in rows]
+
+    def get_app_settings(self, keys=None):
+        conn = self.get_connection()
+        cur = conn.cursor()
+        out = {}
+        if keys:
+            placeholders = ",".join("?" * len(keys))
+            cur.execute(f"SELECT key, value FROM app_settings WHERE is_del = 0 AND key IN ({placeholders})", tuple(keys))
+        else:
+            cur.execute("SELECT key, value FROM app_settings WHERE is_del = 0")
+        for k, v in cur.fetchall():
+            out[k] = v
+        conn.close()
+        return out
+
+    def save_app_settings(self, settings):
+        conn = self.get_connection()
+        for k, v in (settings or {}).items():
+            conn.execute(
+                "INSERT INTO app_settings (key, value, is_del, version) VALUES (?, ?, 0, 1) "
+                "ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = CURRENT_TIMESTAMP",
+                (k, str(v), str(v)),
+            )
+        conn.commit()
+        conn.close()
 
     def delete_book(self, book_id: int):
         conn = self.get_connection()
@@ -1385,6 +1420,12 @@ def execute_action(action: str, payload_json: str) -> Dict[str, Any]:
     elif action == "annotation.deleted":
         engine.storage.delete_annotation(payload.get("annotation_id", 0))
         return {"status": "deleted", "annotation_id": payload.get("annotation_id", 0)}
+    elif action == "settings.get":
+        keys = payload.get("keys") or []
+        return {"settings": engine.storage.get_app_settings(keys)}
+    elif action == "settings.save":
+        engine.storage.save_app_settings(payload.get("settings") or {})
+        return {"status": "saved", "count": len(payload.get("settings") or {})}
     elif action == "ai.companion_ask":
         resp = engine.ai_companion_stream(
             payload.get("book_id", 1),

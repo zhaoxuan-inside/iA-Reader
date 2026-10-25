@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_reader_frontend/core/ffi/reader_engine_bridge.dart';
 import 'package:ai_reader_frontend/main.dart';
 
 /// 诊断测试：切到白天模式后真实渲染阅读界面，导出 golden PNG 并打印实际生效颜色，
 /// 用于定位「白天模式字体未变成黑色导致看不到文字」的报告。
 void main() {
+  // 桥接为进程级单例:清掉此前用例遗留的 mock 配置(主题/上次书目),
+  // 保证本用例从默认暗色启动(启动恢复逻辑会读取这些键)
+  setUp(() {
+    ReaderEngineBridge().resetMockStateForTest();
+  });
+
   testWidgets('白天模式渲染抓帧与颜色诊断', (tester) async {
     tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1.0;

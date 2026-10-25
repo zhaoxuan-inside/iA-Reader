@@ -342,6 +342,36 @@ pub fn execute_action(action: &str, payload: &str) -> Result<Value, String> {
             Ok(json!({ "status": if changed { "updated" } else { "not_found" }, "annotation_id": annotation_id }))
         }
         // ai.companion_ask 在 execute_action 顶部已拦截走流式管线，此臂不可达，已移除
+        "settings.get" => {
+            // 应用配置读取（主题模式/上次书目等 GUI 偏好，集中存储于 app_settings 表）
+            let keys: Vec<String> = val
+                .get("keys")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|k| k.as_str().map(String::from)).collect())
+                .unwrap_or_default();
+            let settings = service
+                .storage
+                .get_app_settings(&keys)
+                .map_err(|e| e.to_string())?;
+            Ok(json!({ "settings": settings }))
+        }
+        "settings.save" => {
+            let mut settings = std::collections::HashMap::new();
+            if let Some(map) = val.get("settings").and_then(|v| v.as_object()) {
+                for (k, v) in map {
+                    let value = match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    settings.insert(k.clone(), value);
+                }
+            }
+            service
+                .storage
+                .save_app_settings(&settings)
+                .map_err(|e| e.to_string())?;
+            Ok(json!({ "status": "saved", "count": settings.len() }))
+        }
         "config.get" => {
             let cfg = crate::llm::LlmConfig::load();
             let rt = crate::paths::runtime();

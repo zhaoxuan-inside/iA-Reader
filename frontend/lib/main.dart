@@ -42,15 +42,51 @@ class _AIReaderAppState extends State<AIReaderApp> {
   bool _isLibraryMode = false;
   int _currentBookId = 1;
 
+  // 启动门闩：配置(主题/上次书目)经引擎恢复完成前渲染纯色启动屏，
+  // 避免 workbench 以默认值初始化后又被异步恢复追改的竞态
+  bool _startupReady = false;
+
   @override
   void initState() {
     super.initState();
     _bridge = ReaderEngineBridge();
+    _restoreAppSettings();
+  }
+
+  /// 启动恢复应用配置（settings.get，集中存储于引擎 app_settings 表）：
+  /// - theme_mode: dark/light（无记录则保持默认暗色）
+  /// - last_book_id: 上次打开的书（已不存在则回书库页）
+  Future<void> _restoreAppSettings() async {
+    final res = await _bridge.invoke('settings.get', {});
+    if (!mounted) return;
+    if (res.isSuccess) {
+      final raw = res.data['settings'];
+      final settings = raw is Map ? raw.cast<String, dynamic>() : <String, dynamic>{};
+      final theme = settings['theme_mode'];
+      if (theme == 'light' || theme == 'dark') {
+        _themeMode = theme == 'light' ? ThemeMode.light : ThemeMode.dark;
+      }
+      final lastBook = int.tryParse('${settings['last_book_id'] ?? ''}');
+      if (lastBook != null && lastBook > 0) {
+        final listRes = await _bridge.invoke('book.list', {});
+        final books = (listRes.data['books'] as List?) ?? [];
+        if (books.any((b) => (b as Map)['id'] == lastBook)) {
+          _currentBookId = lastBook;
+        } else {
+          _isLibraryMode = true;
+        }
+      }
+    }
+    setState(() => _startupReady = true);
   }
 
   void _toggleTheme() {
     setState(() {
       _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+    });
+    // 配置持久化（验收：黑暗/白天模式跨重启保留）
+    _bridge.invoke('settings.save', {
+      'settings': {'theme_mode': _themeMode == ThemeMode.dark ? 'dark' : 'light'},
     });
   }
 
@@ -58,6 +94,10 @@ class _AIReaderAppState extends State<AIReaderApp> {
     setState(() {
       _currentBookId = bookId;
       _isLibraryMode = false;
+    });
+    // 记住上次阅读的书（下次启动直达）
+    _bridge.invoke('settings.save', {
+      'settings': {'last_book_id': bookId},
     });
   }
 
@@ -70,6 +110,14 @@ class _AIReaderAppState extends State<AIReaderApp> {
   @override
   Widget build(BuildContext context) {
     final isDark = _themeMode == ThemeMode.dark;
+
+    if (!_startupReady) {
+      // 启动屏：与默认暗色画布同色，无闪变
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(backgroundColor: Color(0xFF121214)),
+      );
+    }
 
     return MaterialApp(
       title: 'AI Reader',

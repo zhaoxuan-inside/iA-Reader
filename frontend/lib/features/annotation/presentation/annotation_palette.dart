@@ -32,17 +32,22 @@ class AnnotationPalette extends StatelessWidget {
     final textColor = isDark ? ReaderTheme.darkTextPrimary : ReaderTheme.lightTextPrimary;
     final textSecondary = isDark ? ReaderTheme.darkTextSecondary : ReaderTheme.lightTextSecondary;
 
+    // 半高亮预览与正文渲染同构（背景带下半，经共享构造器）
     TextStyle previewStyle(AnnotationStyle style) {
       final color = annotationColorFromHex(selectedColorHex);
-      return TextStyle(
+      final base = TextStyle(
         fontFamily: 'iA Writer Mono',
         fontSize: 12.0,
+        height: 1.5,
         color: textColor,
+      );
+      if (style == AnnotationStyle.halfHighlight) {
+        return base.merge(AnnotationSpanBuilder.halfHighlightBand(color, 12.0, 1.5));
+      }
+      return base.merge(TextStyle(
         backgroundColor:
             style == AnnotationStyle.highlight ? color.withValues(alpha: 0.35) : null,
-        decoration: style == AnnotationStyle.halfHighlight ||
-                style == AnnotationStyle.underline ||
-                style == AnnotationStyle.wavy
+        decoration: style == AnnotationStyle.underline || style == AnnotationStyle.wavy
             ? TextDecoration.underline
             : style == AnnotationStyle.strike
                 ? TextDecoration.lineThrough
@@ -51,10 +56,10 @@ class AnnotationPalette extends StatelessWidget {
         decorationStyle: style == AnnotationStyle.wavy
             ? TextDecorationStyle.wavy
             : TextDecorationStyle.solid,
-        decorationThickness: style == AnnotationStyle.halfHighlight ? 5.0 : 1.5,
+        decorationThickness: 1.5,
         fontWeight: style == AnnotationStyle.bold ? FontWeight.w700 : null,
         fontStyle: style == AnnotationStyle.italic ? FontStyle.italic : null,
-      );
+      ));
     }
 
     return Material(

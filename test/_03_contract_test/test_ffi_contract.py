@@ -262,6 +262,36 @@ class TestFfiContract(unittest.TestCase):
             self.assertTrue(sec["paragraphs"], "每个章节必须有正文段落")
 
     # ------------------------------------------------------------------
+    # 契约 7：应用配置持久化（settings.get/save,主题模式/上次书目）
+    # ------------------------------------------------------------------
+    def test_app_settings_roundtrip(self):
+        code, data, msg = self.invoke("settings.save", {
+            "settings": {"theme_mode": "light", "last_book_id": 3, "flag": True},
+        })
+        self.assertEqual(code, 0, msg)
+        self.assertEqual(data["status"], "saved")
+
+        code, data, msg = self.invoke("settings.get", {"keys": ["theme_mode"]})
+        self.assertEqual(code, 0, msg)
+        self.assertEqual(data["settings"]["theme_mode"], "light", "指定键读取")
+
+        code, data, msg = self.invoke("settings.get", {})
+        self.assertEqual(code, 0, msg)
+        settings = data["settings"]
+        self.assertEqual(settings["theme_mode"], "light")
+        self.assertEqual(settings["last_book_id"], "3", "非字符串值以字符串形态存取")
+        self.assertIn("flag", settings)
+
+        # 覆盖更新(部分键):未涉及的键保留
+        code, data, msg = self.invoke("settings.save", {
+            "settings": {"theme_mode": "dark"},
+        })
+        self.assertEqual(code, 0, msg)
+        code, data, _ = self.invoke("settings.get", {})
+        self.assertEqual(data["settings"]["theme_mode"], "dark")
+        self.assertEqual(data["settings"]["last_book_id"], "3", "部分更新不得清空其他键")
+
+    # ------------------------------------------------------------------
     # 契约 5：信封错误路径——未知 action 必须显式报错
     # ------------------------------------------------------------------
     def test_unknown_action_explicit_error(self):

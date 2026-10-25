@@ -2,6 +2,7 @@
 // SQLite 本地存储实现 (支持 WAL 模式与原子事务)
 
 use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use rusqlite::{params, Connection, Result};
 use crate::domain::*;
 
@@ -161,6 +162,16 @@ impl SqliteStorage {
                 latency_ms REAL NOT NULL DEFAULT 0.0,
                 FOREIGN KEY(book_id) REFERENCES book_meta(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                description TEXT,
+                is_del INTEGER NOT NULL DEFAULT 0,
+                version INTEGER NOT NULL DEFAULT 1,
+                value TEXT NOT NULL
+            );
         ")?;
         Ok(())
     }
@@ -296,6 +307,43 @@ impl SqliteStorage {
             params![id],
         )?;
         Ok(true)
+    }
+
+    /// 应用配置读取（app_settings 键值表）：keys 为空返回全部
+    pub fn get_app_settings(&self, keys: &[String]) -> Result<HashMap<String, String>> {
+        let conn = self.conn.lock().unwrap();
+        let mut out = HashMap::new();
+        if keys.is_empty() {
+            let mut stmt = conn
+                .prepare("SELECT key, value FROM app_settings WHERE is_del = 0")?;
+            let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?;
+            for r in rows {
+                let (k, v) = r?;
+                out.insert(k, v);
+            }
+        } else {
+            let mut stmt = conn
+                .prepare("SELECT key, value FROM app_settings WHERE is_del = 0 AND key = ?1")?;
+            for key in keys {
+                if let Ok(v) = stmt.query_row(params![key], |row| row.get::<_, String>(1)) {
+                    out.insert(key.clone(), v);
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// 应用配置保存：逐键 upsert（部分更新语义）
+    pub fn save_app_settings(&self, settings: &HashMap<String, String>) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        for (k, v) in settings {
+            conn.execute(
+                "INSERT INTO app_settings (key, value, is_del, version) VALUES (?1, ?2, 0, 1)
+                 ON CONFLICT(key) DO UPDATE SET value = ?2, updated_at = CURRENT_TIMESTAMP",
+                params![k, v],
+            )?;
+        }
+        Ok(())
     }
 
     /// 返回按入参顺序落库后的真实章节 id（sentence_node.section_id 外键需要）

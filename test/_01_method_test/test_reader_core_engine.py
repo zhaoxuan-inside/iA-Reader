@@ -50,7 +50,7 @@ class TestReaderCoreEngine(unittest.TestCase):
         tables = [row["name"] for row in cur.fetchall()]
         conn.close()
 
-        expected_tables = ["book_meta", "book_section", "sentence_node", "keyword_node", "keyword_relation", "mindmap_node", "annotation", "ai_conversation"]
+        expected_tables = ["book_meta", "book_section", "sentence_node", "keyword_node", "keyword_relation", "mindmap_node", "annotation", "ai_conversation", "app_settings"]
         for t in expected_tables:
             self.assertIn(t, tables, f"Table {t} should be created by migration")
 
