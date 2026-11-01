@@ -255,8 +255,9 @@ mod tests {
         std::env::set_var("HOME", &home);
         let rt = init_runtime();
         let rt2 = init_runtime();
-        match (saved_home, saved_env_base) {
-            (h, b) => {
+        let (h, b) = (saved_home, saved_env_base);
+        {
+            {
                 if let Some(h) = h { std::env::set_var("HOME", h); }
                 match b {
                     Some(b) => std::env::set_var("AI_READER_HOME", b),

@@ -13,10 +13,13 @@ use std::path::{Path, PathBuf};
 use std::io::BufRead;
 use std::time::Duration;
 
-/// 重试次数上限（含首次调用），对齐 PRD §4.1「指数退避重试（最多 3 次）」
+/// 重试次数缺省值（含首次调用），对齐 PRD §4.1「指数退避重试（最多 3 次）」；
+/// 实际取值来自配置 max_retries（0~5 可配）
 pub const MAX_RETRIES: u32 = 3;
 /// 退避基础延时（毫秒），第 n 次重试前等待 base * 2^(n-1)
 pub const BASE_DELAY_MS: u64 = 300;
+/// 单次请求超时缺省值（毫秒），配置 timeout_ms 可在 1000~120000 间调整
+pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
 
 fn default_provider() -> String {
     "deepseek".to_string()
@@ -34,8 +37,7 @@ fn default_max_tokens() -> u32 {
     2048
 }
 
-/// LLM 配置，字段与 `backend/reader_engine.py::get_llm_config` 及
-/// `~/.config/ai-reader/llm_config.json` 完全同构，两端共享同一份用户配置。
+/// LLM 配置：`<base>/config/llm_config.json` 为唯一用户配置源（密钥密文单独存储）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     #[serde(default = "default_provider")]
@@ -52,6 +54,19 @@ pub struct LlmConfig {
     pub max_output_tokens: u32,
     #[serde(default)]
     pub system_prompt: String,
+    /// 单次请求超时（毫秒），FEAT-006 §3 要求可配
+    #[serde(default = "default_timeout_ms")]
+    pub timeout_ms: u64,
+    /// 重试次数（0~5），FEAT-006 §3 要求可配
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+}
+
+fn default_timeout_ms() -> u64 {
+    DEFAULT_TIMEOUT_MS
+}
+fn default_max_retries() -> u32 {
+    MAX_RETRIES
 }
 
 impl Default for LlmConfig {
@@ -122,7 +137,18 @@ impl LlmConfig {
             .join("config")
             .join("default_llm_config.json");
         let default = if default_path.exists() { Some(default_path) } else { None };
-        Self::load_from(user.as_deref(), default.as_deref())
+        let mut cfg = Self::load_from(user.as_deref(), default.as_deref());
+        // 明文 JSON 未携带密钥时从密文文件解密补齐（save_user_config 的对偶路径）；
+        // 老版本明文密钥走 load_from 已带回，下次保存自动迁移为密文
+        if cfg.api_key.trim().is_empty() {
+            if let Ok(blob) = std::fs::read_to_string(api_key_secret_path()) {
+                let plain = decrypt_api_key_with(&keystone_path(), &blob);
+                if !plain.is_empty() {
+                    cfg.api_key = plain;
+                }
+            }
+        }
+        cfg
     }
 }
 
@@ -143,6 +169,19 @@ pub fn build_companion_messages(
     prompt: &str,
     system_prompt: &str,
 ) -> Vec<ChatMessage> {
+    build_companion_messages_with_history(template_type, selected_text, prompt, system_prompt, &[])
+}
+
+/// 多轮版本（FEAT-005 REQ-003「追问上下文连续」）：history 为既往轮次
+/// （用户输入, 助手回复），按序插入 system 与本轮 user 之间——
+/// 此前每次只组 system+单条 user，追问等效于无状态重发选区。
+pub fn build_companion_messages_with_history(
+    template_type: &str,
+    selected_text: &str,
+    prompt: &str,
+    system_prompt: &str,
+    history: &[(String, String)],
+) -> Vec<ChatMessage> {
     let mut system = String::from(system_prompt);
     if !system.is_empty() {
         system.push_str("\n\n");
@@ -154,10 +193,14 @@ pub fn build_companion_messages(
         user.push_str(&format!("\n\n我的追问：{}", prompt));
     }
 
-    vec![
-        ChatMessage { role: "system", content: system },
-        ChatMessage { role: "user", content: user },
-    ]
+    let mut msgs = Vec::with_capacity(history.len() * 2 + 2);
+    msgs.push(ChatMessage { role: "system", content: system });
+    for (u, a) in history {
+        msgs.push(ChatMessage { role: "user", content: u.clone() });
+        msgs.push(ChatMessage { role: "assistant", content: a.clone() });
+    }
+    msgs.push(ChatMessage { role: "user", content: user });
+    msgs
 }
 
 /// 指数退避重试编排：首次失败后按 base*2^(n-1) ms 退避再试，直至耗尽 max_retries。
@@ -221,8 +264,9 @@ where
 /// 生产传输层：OpenAI 兼容 `POST {endpoint}/chat/completions`（deepseek 等均兼容）。
 pub struct UreqLlmClient;
 
-/// 单次请求上限：LLM 深度解析生成耗时不定，60s 覆盖长回复同时避免 FFI 线程无限挂起。
-const CHAT_TIMEOUT_SECS: u64 = 60;
+fn request_timeout(config: &LlmConfig) -> Duration {
+    Duration::from_millis(config.timeout_ms.clamp(1_000, 120_000))
+}
 
 impl LlmClient for UreqLlmClient {
     fn chat(&self, config: &LlmConfig, messages: &[ChatMessage]) -> Result<String, String> {
@@ -242,7 +286,7 @@ impl LlmClient for UreqLlmClient {
 
         let resp = ureq::post(&url)
             .set("Authorization", &format!("Bearer {}", config.api_key.trim()))
-            .timeout(Duration::from_secs(CHAT_TIMEOUT_SECS))
+            .timeout(request_timeout(config))
             .send_json(body)
             .map_err(|e| format!("LLM request failed: {}", e))?;
 
@@ -284,7 +328,7 @@ impl LlmClient for UreqLlmClient {
 
         let resp = ureq::post(&url)
             .set("Authorization", &format!("Bearer {}", config.api_key.trim()))
-            .timeout(Duration::from_secs(CHAT_TIMEOUT_SECS))
+            .timeout(request_timeout(config))
             .send_json(body)
             .map_err(|e| format!("LLM stream request failed: {}", e))?;
 
@@ -343,15 +387,140 @@ pub fn validate_config(cfg: &LlmConfig) -> Result<(), String> {
     if !(1..=8192).contains(&cfg.max_output_tokens) {
         return Err(format!("max_output_tokens 必须在 1 ~ 8192 之间，当前: {}", cfg.max_output_tokens));
     }
+    if !(1000..=120_000).contains(&cfg.timeout_ms) {
+        return Err(format!("timeout_ms 必须在 1000 ~ 120000 之间，当前: {}", cfg.timeout_ms));
+    }
+    if cfg.max_retries > 5 {
+        return Err(format!("max_retries 必须在 0 ~ 5 之间，当前: {}", cfg.max_retries));
+    }
     Ok(())
 }
 
-/// 保存用户级配置：校验 → 目录自建 → 整文件覆写（JSON pretty，便于手改对照）。
+// =========================================================================
+// api_key 本地加密存储（AES-256-GCM）
+// =========================================================================
+// 密文落 <base>/config/llm_secret，主密钥落 <base>/config/.keystone（0600）。
+// 此前 api_key 以明文 JSON 落盘；加密不能对抗同用户进程，但可挡住字符串扫描、
+// 误同步与打包收集——本地威胁模型下是配置文件形态里最务实的保护。
+
+use aes_gcm::aead::Aead;
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+
+pub fn keystone_path() -> PathBuf {
+    user_config_path().with_file_name(".keystone")
+}
+
+pub fn api_key_secret_path() -> PathBuf {
+    user_config_path().with_file_name("llm_secret")
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+fn hex_decode(text: &str) -> Result<Vec<u8>, String> {
+    if !text.len().is_multiple_of(2) {
+        return Err("hex 长度非法".to_string());
+    }
+    (0..text.len() / 2)
+        .map(|i| u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).map_err(|e| e.to_string()))
+        .collect()
+}
+
+fn restrict_permissions(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("收紧文件权限失败 {}: {}", path.display(), e))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
+/// 读取（或首次生成）本机主密钥：32 字节随机值，hex 存储，0600 权限
+fn load_or_create_keystone_at(path: &Path) -> Result<[u8; 32], String> {
+    if path.exists() {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("读取主密钥失败: {}", e))?;
+        let bytes = hex_decode(text.trim())?;
+        let mut key = [0u8; 32];
+        if bytes.len() != 32 {
+            return Err("主密钥长度非法".to_string());
+        }
+        key.copy_from_slice(&bytes);
+        return Ok(key);
+    }
+    let parent = path.parent().ok_or_else(|| format!("主密钥路径非法: {}", path.display()))?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
+    let mut key = [0u8; 32];
+    use rand::Rng;
+    rand::rng().fill_bytes(&mut key);
+    std::fs::write(path, hex_encode(&key)).map_err(|e| format!("写入主密钥失败: {}", e))?;
+    restrict_permissions(path)?;
+    Ok(key)
+}
+
+/// api_key → hex(nonce || AES-GCM 密文)
+fn encrypt_api_key_with(keystone: &Path, plain: &str) -> Result<String, String> {
+    use rand::Rng;
+    let key = load_or_create_keystone_at(keystone)?;
+    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| format!("密钥初始化失败: {}", e))?;
+    let mut nonce_bytes = [0u8; 12];
+    rand::rng().fill_bytes(&mut nonce_bytes);
+    let nonce = Nonce::try_from(&nonce_bytes[..]).map_err(|e| format!("nonce 初始化失败: {:?}", e))?;
+    let ct = cipher
+        .encrypt(&nonce, plain.as_bytes())
+        .map_err(|e| format!("密钥加密失败: {}", e))?;
+    let mut blob = nonce_bytes.to_vec();
+    blob.extend_from_slice(&ct);
+    Ok(hex_encode(&blob))
+}
+
+/// hex(nonce || 密文) → api_key；任何失败返回空串（配置缺失/损坏时按未配置处理，不致命）
+fn decrypt_api_key_with(keystone: &Path, blob: &str) -> String {
+    let decoded = match hex_decode(blob.trim()) {
+        Ok(v) if v.len() > 12 => v,
+        _ => return String::new(),
+    };
+    let Ok(key) = load_or_create_keystone_at(keystone) else {
+        return String::new();
+    };
+    let Ok(cipher) = Aes256Gcm::new_from_slice(&key) else {
+        return String::new();
+    };
+    let (nonce, ct) = decoded.split_at(12);
+    match Nonce::try_from(nonce) {
+        Ok(n) => cipher
+            .decrypt(&n, ct)
+            .ok()
+            .and_then(|v| String::from_utf8(v).ok())
+            .unwrap_or_default(),
+        Err(_) => String::new(),
+    }
+}
+
+/// 保存用户级配置：校验 → api_key 加密写密文文件（0600）→ 主配置 JSON 不含明文密钥。
+/// 老版本遗留的明文 api_key 在下次保存时自动迁移为密文形态。
 pub fn save_user_config(path: &Path, cfg: &LlmConfig) -> Result<(), String> {
     validate_config(cfg)?;
     let parent = path.parent().ok_or_else(|| format!("配置路径非法: {}", path.display()))?;
     std::fs::create_dir_all(parent).map_err(|e| format!("创建配置目录失败: {}", e))?;
-    let text = serde_json::to_string_pretty(cfg).map_err(|e| format!("配置序列化失败: {}", e))?;
+
+    // 密钥出 JSON：非空写密文文件（与传入配置同目录），空则清掉旧密文（用户显式清空密钥）
+    let keystone = path.with_file_name(".keystone");
+    let secret = path.with_file_name("llm_secret");
+    if cfg.api_key.trim().is_empty() {
+        std::fs::remove_file(&secret).ok();
+    } else {
+        let blob = encrypt_api_key_with(&keystone, cfg.api_key.trim())?;
+        std::fs::write(&secret, blob).map_err(|e| format!("写入密钥密文失败: {}", e))?;
+        restrict_permissions(&secret)?;
+    }
+
+    let mut on_disk = cfg.clone();
+    on_disk.api_key = String::new();
+    let text = serde_json::to_string_pretty(&on_disk).map_err(|e| format!("配置序列化失败: {}", e))?;
     std::fs::write(path, text).map_err(|e| format!("写入配置失败: {}", e))
 }
 
@@ -654,8 +823,15 @@ pub mod tests {
         }))
         .unwrap();
         save_user_config(&path, &cfg).unwrap();
+        // 新契约：JSON 不落明文，load_from 只回 JSON 形态（api_key 空）
         let loaded = LlmConfig::load_from(Some(&path), None);
-        assert_eq!(loaded.api_key, "sk-roundtrip");
+        assert!(loaded.api_key.is_empty(), "JSON 形态不回明文密钥");
+        let blob = std::fs::read_to_string(path.with_file_name("llm_secret")).unwrap();
+        assert_eq!(
+            decrypt_api_key_with(&path.with_file_name(".keystone"), &blob),
+            "sk-roundtrip",
+            "密文文件应可解密回原密钥"
+        );
         assert_eq!(loaded.endpoint, "https://api.test.com/v1");
         assert_eq!(loaded.model_name, "m1");
         assert_eq!(loaded.temperature, 0.3);
@@ -709,7 +885,7 @@ pub mod tests {
         let cfg = test_config("sk-ok");
         let ms = test_llm_connection(&mock, &cfg).unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 1, "连接测试只调一次不重试");
-        assert!(ms >= 0);
+        let _ = ms; // 时延数值依赖环境，仅要求可测量（u128 恒非负）
     }
 
     #[test]
@@ -734,3 +910,83 @@ pub mod tests {
     }
 }
 
+
+#[cfg(test)]
+mod secret_storage_tests {
+    use super::*;
+
+    #[test]
+    fn api_key_is_encrypted_at_rest_and_roundtrips() {
+        let dir = std::env::temp_dir().join(format!(
+            "ai_reader_secret_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let path = dir.join("llm_config.json");
+        let cfg = serde_json::from_value(json!({
+            "endpoint": "https://api.test.com/v1",
+            "api_key": "sk-super-secret-value",
+            "model_name": "m1"
+        }))
+        .unwrap();
+
+        save_user_config(&path, &cfg).unwrap();
+
+        // 主配置 JSON 不含明文密钥
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(!on_disk.contains("sk-super-secret-value"), "JSON 不得含明文密钥: {}", on_disk);
+        // 密文文件存在且不含明文
+        let secret = path.with_file_name("llm_secret");
+        let blob = std::fs::read_to_string(&secret).unwrap();
+        assert!(!blob.contains("sk-super-secret-value"), "密文文件不得含明文");
+        // 解密回原文
+        let keystone = path.with_file_name(".keystone");
+        assert_eq!(decrypt_api_key_with(&keystone, &blob), "sk-super-secret-value");
+        // 主密钥文件权限 0600（unix）
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&keystone).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "主密钥文件应为 0600: {:o}", mode);
+        }
+
+        // 显式清空密钥 → 密文文件被移除
+        let mut cleared = cfg.clone();
+        cleared.api_key = String::new();
+        save_user_config(&path, &cleared).unwrap();
+        assert!(!secret.exists(), "清空密钥后密文文件应移除");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn validate_config_checks_timeout_and_retries() {
+        let bad_low = LlmConfig { timeout_ms: 500, ..Default::default() };
+        assert!(validate_config(&bad_low).is_err(), "timeout_ms 下界应拒绝");
+        let bad_high = LlmConfig { timeout_ms: 200_000, ..Default::default() };
+        assert!(validate_config(&bad_high).is_err(), "timeout_ms 上界应拒绝");
+        let bad_retries = LlmConfig { timeout_ms: 30_000, max_retries: 6, ..Default::default() };
+        assert!(validate_config(&bad_retries).is_err(), "max_retries 上界应拒绝");
+        let ok = LlmConfig { timeout_ms: 30_000, max_retries: 2, ..Default::default() };
+        assert!(validate_config(&ok).is_ok());
+    }
+
+    #[test]
+    fn companion_messages_with_history_preserves_thread_context() {
+        let history = vec![
+            ("我先问了个问题".to_string(), "我先答了".to_string()),
+        ];
+        let msgs = build_companion_messages_with_history("general", "选区", "追问内容", "人设", &history);
+        assert_eq!(msgs.len(), 4, "system + (user, assistant) 历史 + 本轮 user");
+        assert_eq!(msgs[0].role, "system");
+        assert_eq!(msgs[1].role, "user");
+        assert_eq!(msgs[2].role, "assistant");
+        assert_eq!(msgs[2].content, "我先答了");
+        assert!(msgs[3].content.contains("追问内容"));
+        // 空历史与旧单发形态等价
+        let no_hist = build_companion_messages_with_history("general", "选区", "", "人设", &[]);
+        assert_eq!(no_hist.len(), 2);
+    }
+}

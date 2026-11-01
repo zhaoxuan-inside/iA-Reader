@@ -9,6 +9,10 @@ description = "High-performance reading, NLP graph and cognitive companion engin
 name = "reader_core"
 crate-type = ["cdylib", "rlib"]
 
+[[bin]]
+name = "ai-reader-cli"
+path = "src/bin/ai_reader_cli.rs"
+
 [dependencies]
 rusqlite = { version = "0.31", features = ["bundled", "backup", "chrono"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -18,3 +22,5 @@ thiserror = "1.0"
 regex = "1.10"
 ureq = { version = "2.10", default-features = false, features = ["json", "tls", "gzip"] }
 sha2 = "0.10"
+aes-gcm = "0.11.1"
+rand = "0.10.3"

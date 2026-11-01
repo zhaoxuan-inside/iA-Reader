@@ -9,6 +9,13 @@ use std::sync::{Mutex, OnceLock};
 
 static LOG_FILE: OnceLock<Option<Mutex<std::fs::File>>> = OnceLock::new();
 
+/// 无头宿主（CLI）开关：日志镜像全部改走 stderr，保证 stdout 只承载机器可读输出
+static MIRROR_TO_STDERR: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn mirror_logs_to_stderr() {
+    MIRROR_TO_STDERR.store(true, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// 初始化文件日志（追加写）。失败时静默降级为仅 stdout。
 pub fn init(log_dir: &Path) {
     let file = OpenOptions::new()
@@ -27,9 +34,10 @@ pub fn log(level: &str, msg: &str) {
         level,
         msg
     );
-    match level {
-        "ERROR" => eprintln!("{}", line),
-        _ => println!("{}", line),
+    if level == "ERROR" || MIRROR_TO_STDERR.load(std::sync::atomic::Ordering::Relaxed) {
+        eprintln!("{}", line);
+    } else {
+        println!("{}", line);
     }
     if let Some(mutex) = LOG_FILE.get() {
         if let Some(file) = mutex.as_ref() {

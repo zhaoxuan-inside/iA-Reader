@@ -9,9 +9,16 @@ use crate::storage::SqliteStorage;
 use crate::parser::*;
 use crate::nlp::*;
 use crate::llm::{
-    build_companion_messages, chat_with_retry, chat_with_retry_stream, LlmClient, LlmConfig,
+    build_companion_messages_with_history, chat_with_retry, chat_with_retry_stream, LlmClient, LlmConfig,
     UreqLlmClient, BASE_DELAY_MS, MAX_RETRIES,
 };
+
+/// book.parse 结果：duplicate=true 表示同内容文档已存在（幂等定位，不重复入库）
+#[derive(Debug)]
+pub struct DocParseOutcome {
+    pub meta: BookMeta,
+    pub duplicate: bool,
+}
 
 pub struct ReaderService {
     pub storage: SqliteStorage,
@@ -32,10 +39,10 @@ impl ReaderService {
     // =========================================================================
     // 1. 文档解构六元组 (doc_parse)
     // =========================================================================
-    pub fn doc_parse(&self, file_path: &str) -> Result<BookMeta, String> {
+    pub fn doc_parse(&self, file_path: &str) -> Result<DocParseOutcome, String> {
         let start = Instant::now();
-        let ext = file_path.split('.').last().unwrap_or("").to_lowercase();
-        
+        let ext = file_path.split('.').next_back().unwrap_or("").to_lowercase();
+
         let parsed = match ext.as_str() {
             "pdf" => parse_pdf(file_path),
             "epub" => parse_epub(file_path),
@@ -48,13 +55,20 @@ impl ReaderService {
         // 此前 Err(_) 被吞进 txt fallback，是 PDF/EPUB 假正文静默入库的根源。
         let mut doc = parsed?;
 
-        // FEAT-001 去重：同内容文档（哈希一致）禁止重复入库
-        if let Some(existing) = self
+        // FEAT-001 去重（幂等定位语义）：同内容文档（哈希一致）不重复入库，
+        // 返回既有书目供前端直接定位打开——不再以报错"拦截"收场
+        if let Some(existing_id) = self
             .storage
             .find_book_id_by_hash(&doc.meta.file_hash)
             .map_err(|e| e.to_string())?
         {
-            return Err(format!("该文档已在书库中（book_id: {}），重复导入已拦截", existing));
+            let existing = self
+                .storage
+                .get_book(existing_id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("去重命中 book_id {} 但书目缺失", existing_id))?;
+            crate::log_info!("[DEDUP] duplicate import located to existing book_id: {}", existing_id);
+            return Ok(DocParseOutcome { meta: existing, duplicate: true });
         }
 
         // 导入文档稳定副本（ADR_005）：源文件移动/删除不再破坏书库；失败降级沿用原路径
@@ -73,47 +87,21 @@ impl ReaderService {
             }
         }
 
-        let book_id = self.storage.save_book(&doc.meta).map_err(|e| {
-            self.doc_parse_compensate(file_path);
-            format!("Failed to save book meta: {}", e)
-        })?;
+        // 整书原子落库（book upsert + 章节/段落/句子重建，单事务，失败整体回滚）
+        let book_id = self
+            .storage
+            .save_parsed_book(&doc.meta, &doc.sections, &doc.paragraphs, &doc.sentences)
+            .map_err(|e| {
+                self.doc_parse_compensate(file_path);
+                format!("Failed to save book: {}", e)
+            })?;
 
         doc.meta.id = book_id;
-
-        // 同路径换内容再导（upsert 命中已有行）：派生数据整体重建，防止新旧章节混杂；
-        // 批注与伴读会话按 book_id 保留
-        self.storage
-            .delete_book_derived_data(book_id)
-            .map_err(|e| format!("Failed to delete derived data: {}", e))?;
-
-        for s in &mut doc.sections {
-            s.book_id = book_id;
-        }
-        let section_ids = self
-            .storage
-            .save_sections(&doc.sections)
-            .map_err(|e| format!("Failed to save sections: {}", e))?;
-        for (s, &sid) in doc.sections.iter_mut().zip(&section_ids) {
-            s.id = sid;
-        }
-
-        // 句子按 1-based 章节序号占位，此处回填真实章节 id——
-        // AUTOINCREMENT 下章节 id 全局递增，占位符只对库里第一本书碰巧成立
-        for sent in &mut doc.sentences {
-            sent.book_id = book_id;
-            let pos = (sent.section_id - 1).max(0) as usize;
-            if pos < section_ids.len() {
-                sent.section_id = section_ids[pos];
-            }
-        }
-        self.storage
-            .save_sentences(&doc.sentences)
-            .map_err(|e| format!("Failed to save sentences: {}", e))?;
 
         self.doc_parse_metrics(start.elapsed().as_secs_f64() * 1000.0, doc.sentences.len());
         self.doc_parse_recall(book_id);
 
-        Ok(doc.meta)
+        Ok(DocParseOutcome { meta: doc.meta, duplicate: false })
     }
 
     pub fn doc_parse_compensate(&self, file_path: &str) {
@@ -143,27 +131,24 @@ impl ReaderService {
             return self.nlp_keyword_extract_fallback(book_id, top_n);
         }
 
-        let mut all_text = String::new();
-        for s in &sections {
-            if let Some(ref c) = s.content {
-                all_text.push_str(c);
-                all_text.push(' ');
-            }
-        }
-
-        let tokens = tokenize(&all_text);
-        if tokens.is_empty() {
+        let section_tokens: Vec<Vec<String>> = sections
+            .iter()
+            .map(|s| tokenize(s.content.as_deref().unwrap_or("")))
+            .collect();
+        let all_tokens: Vec<String> = section_tokens.iter().flatten().cloned().collect();
+        if all_tokens.is_empty() {
             return self.nlp_keyword_extract_fallback(book_id, top_n);
         }
 
-        let doc_freqs = HashMap::new();
-        let tfidf = calculate_tfidf(&tokens, 1, &doc_freqs);
-        let textrank = calculate_textrank(&tokens, 5, 10);
+        // 真实 TF-IDF：df = 词项出现在多少个章节（此前传空 df 使 idf 恒为常数，退化成词频）
+        let doc_freqs = doc_frequencies(&section_tokens);
+        let tfidf = calculate_tfidf(&all_tokens, section_tokens.len(), &doc_freqs);
+        let textrank = calculate_textrank(&all_tokens, 5, 10);
         let tr_map: HashMap<String, f64> = textrank.into_iter().collect();
 
         let mut keywords = Vec::new();
         for (idx, (word, tfidf_score, freq)) in tfidf.iter().take(top_n).enumerate() {
-            let tr_score = tr_map.get(word).cloned().unwrap_or(0.1);
+            let tr_score = tr_map.get(word).copied().unwrap_or(0.0);
             keywords.push(KeywordNode {
                 id: (idx + 1) as i64,
                 created_at: String::new(),
@@ -191,27 +176,10 @@ impl ReaderService {
         crate::log_warn!("[COMPENSATE] Cleaning up extracted keywords for book_id: {}", book_id);
     }
 
-    pub fn nlp_keyword_extract_fallback(&self, book_id: i64, top_n: usize) -> Result<Vec<KeywordNode>, String> {
-        crate::log_warn!("[FALLBACK] Using simple word frequency fallback for book_id: {}", book_id);
-        let fallback_words = vec!["深度阅读", "认知伴读", "注意力", "知识图谱", "思维导图"];
-        let mut res = Vec::new();
-        for (i, w) in fallback_words.iter().take(top_n).enumerate() {
-            res.push(KeywordNode {
-                id: (i + 1) as i64,
-                created_at: String::new(),
-                updated_at: String::new(),
-                description: None,
-                is_del: 0,
-                version: 1,
-                book_id,
-                word: w.to_string(),
-                level: "book".to_string(),
-                tfidf_score: 0.5,
-                textrank_score: 0.5,
-                frequency: 5,
-            });
-        }
-        Ok(res)
+    /// 诚实兜底：无可分词内容时返回空列表（由前端空态承接），不再编造假关键词
+    pub fn nlp_keyword_extract_fallback(&self, book_id: i64, _top_n: usize) -> Result<Vec<KeywordNode>, String> {
+        crate::log_warn!("[FALLBACK] 无可分词内容，返回空关键词列表 book_id: {}", book_id);
+        Ok(Vec::new())
     }
 
     pub fn nlp_keyword_extract_metrics(&self, duration_ms: f64, count: usize) {
@@ -255,24 +223,10 @@ impl ReaderService {
         crate::log_warn!("[COMPENSATE] Resetting keyword relations for book_id: {}", book_id);
     }
 
+    /// 诚实兜底：无关键词时返回空边集（前端空态承接），不再编造假边
     pub fn keyword_graph_build_fallback(&self, book_id: i64, _min: i32) -> Result<Vec<KeywordRelation>, String> {
-        crate::log_warn!("[FALLBACK] Using simple default relations for book_id: {}", book_id);
-        Ok(vec![
-            KeywordRelation {
-                id: 1,
-                created_at: String::new(),
-                updated_at: String::new(),
-                description: None,
-                is_del: 0,
-                version: 1,
-                book_id,
-                source_word_id: 1,
-                target_word_id: 2,
-                co_occurrence_count: 2,
-                pmi_score: 1.5,
-                weight: 0.6,
-            }
-        ])
+        crate::log_warn!("[FALLBACK] 无关键词可构图，返回空边集 book_id: {}", book_id);
+        Ok(Vec::new())
     }
 
     pub fn keyword_graph_build_metrics(&self, duration_ms: f64, edge_count: usize) {
@@ -293,6 +247,14 @@ impl ReaderService {
             return self.mindmap_generate_fallback(book_id);
         }
 
+        // 全书 Top 关键词（根节点摘要）与各章节 Top 关键词（第三层叶节点）。
+        // 此前叶层是写死的「核心概念/重点」占位串，导图只有目录价值、没有知识价值。
+        let root_tokens: Vec<String> = sections
+            .iter()
+            .flat_map(|s| tokenize(s.content.as_deref().unwrap_or("")))
+            .collect();
+        let root_keywords = top_tokens(&root_tokens, 5);
+
         let mut nodes = Vec::new();
         nodes.push(MindmapNode {
             id: 1,
@@ -307,12 +269,17 @@ impl ReaderService {
             section_id: None,
             level: 0,
             sort_order: 0,
-            keywords_json: Some("[\"核心概念\"]".to_string()),
+            keywords_json: serde_json::to_string(&root_keywords).ok(),
         });
 
+        let mut next_id: i64 = 2;
         for (idx, sec) in sections.iter().enumerate() {
+            let branch_id = next_id;
+            next_id += 1;
+            let tokens = tokenize(sec.content.as_deref().unwrap_or(""));
+            let section_keywords = top_tokens(&tokens, 3);
             nodes.push(MindmapNode {
-                id: (idx + 2) as i64,
+                id: branch_id,
                 created_at: String::new(),
                 updated_at: String::new(),
                 description: None,
@@ -324,8 +291,26 @@ impl ReaderService {
                 section_id: Some(sec.id),
                 level: 1,
                 sort_order: (idx + 1) as i32,
-                keywords_json: Some("[\"重点\"]".to_string()),
+                keywords_json: serde_json::to_string(&section_keywords).ok(),
             });
+            for (li, word) in section_keywords.iter().enumerate() {
+                nodes.push(MindmapNode {
+                    id: next_id,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                    description: None,
+                    is_del: 0,
+                    version: 1,
+                    book_id,
+                    parent_id: Some(branch_id),
+                    title: word.clone(),
+                    section_id: Some(sec.id),
+                    level: 2,
+                    sort_order: (li + 1) as i32,
+                    keywords_json: None,
+                });
+                next_id += 1;
+            }
         }
 
         let _ = self.storage.save_mindmap_nodes(&nodes);
@@ -339,8 +324,9 @@ impl ReaderService {
         crate::log_warn!("[COMPENSATE] Resetting mindmap cache for book_id: {}", book_id);
     }
 
+    /// 诚实兜底：无章节时仅返回根节点，不再编造内容
     pub fn mindmap_generate_fallback(&self, book_id: i64) -> Result<Vec<MindmapNode>, String> {
-        crate::log_warn!("[FALLBACK] Flat mindmap fallback for book_id: {}", book_id);
+        crate::log_warn!("[FALLBACK] 无章节内容，导图退化为单根节点 book_id: {}", book_id);
         Ok(vec![
             MindmapNode {
                 id: 1,
@@ -351,7 +337,7 @@ impl ReaderService {
                 version: 1,
                 book_id,
                 parent_id: None,
-                title: "目录概要".to_string(),
+                title: "空文档".to_string(),
                 section_id: None,
                 level: 0,
                 sort_order: 0,
@@ -420,7 +406,13 @@ impl ReaderService {
         prompt: &str,
     ) -> Result<String, String> {
         let start = Instant::now();
-        let messages = build_companion_messages(template_type, selected_text, prompt, &config.system_prompt);
+        let messages = build_companion_messages_with_history(
+            template_type,
+            selected_text,
+            prompt,
+            &config.system_prompt,
+            &[],
+        );
 
         // api_key 未配置：不发 HTTP、零计费，直接离线启发式卡片（PRD §4.1 离线可用性）
         let (response, offline) = if config.api_key.trim().is_empty() {
@@ -431,9 +423,9 @@ impl ReaderService {
                 self.llm_client.as_ref(),
                 config,
                 &messages,
-                MAX_RETRIES,
+                config.max_retries.max(1),
                 BASE_DELAY_MS,
-                |d| std::thread::sleep(d),
+                std::thread::sleep,
             ) {
                 Ok(content) => (content, false),
                 Err(err) => {
@@ -456,6 +448,7 @@ impl ReaderService {
             prompt: prompt.to_string(),
             response: response.clone(),
             latency_ms: start.elapsed().as_secs_f64() * 1000.0,
+            thread_id: None,
         };
         if let Err(e) = self.storage.save_ai_conversation(&conv) {
             // 持久化失败不吞异常也不阻断响应：返回仍成功，仅留运维日志（会话是伴读的附属沉淀）
@@ -503,17 +496,31 @@ pub fn companion_offline_text(template_type: &str, selected_text: &str) -> Strin
     )
 }
 
+/// 词频 Top-N（稳定排序：同频按词序），供导图分支/叶层与根摘要使用
+pub fn top_tokens(tokens: &[String], top_n: usize) -> Vec<String> {
+    let mut freq: HashMap<&str, usize> = HashMap::new();
+    for t in tokens {
+        *freq.entry(t.as_str()).or_insert(0) += 1;
+    }
+    let mut pairs: Vec<(&str, usize)> = freq.into_iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    pairs.into_iter().take(top_n).map(|(w, _)| w.to_string()).collect()
+}
+
 // =========================================================================
 // 7. 流式伴读注册表（task_17 D2）：start/poll 免锁管线
 // =========================================================================
 // 派生线程执行 LLM 流式调用并持久化，全程不占用 SERVICE Mutex；
-// poll 只读注册表快照，前端 260ms 轮询渐进渲染（TTFT ≈ 首 delta 到达时延）。
+// poll 只读注册表快照，前端轮询渐进渲染（TTFT = 首 delta 到达时延）。
 
 #[derive(Debug, Clone, Default)]
 pub struct CompanionStreamState {
     pub partial: String,
     pub done: bool,
     pub offline: bool,
+    /// 首个 delta 到达时刻（epoch ms）：TTFT = first_delta_at_ms - started_at_ms
+    pub started_at_ms: u64,
+    pub first_delta_at_ms: Option<u64>,
     /// 终态落定时刻（epoch ms）：done 后保留 60s 供前端重复 poll 稳定取终态，
     /// 超时由惰性清扫回收——长会话下注册表不再无限增长（内存泄漏修复）
     pub finished_at_ms: Option<u64>,
@@ -550,16 +557,32 @@ fn companion_streams() -> &'static Mutex<HashMap<String, Arc<Mutex<CompanionStre
 
 /// 启动一次流式伴读：立即返回 request_id，LLM 调用/重试/持久化全部在派生线程完成。
 /// client 以参数注入（生产传 UreqLlmClient，测试传 Mock），storage 句柄为 Arc 内核克隆。
-pub fn companion_start(
-    client: Box<dyn LlmClient + Send>,
-    storage: SqliteStorage,
-    config: LlmConfig,
-    book_id: i64,
-    template_type: String,
-    selected_text: String,
-    prompt: String,
-) -> String {
+/// thread_id 非空时还原该线程既有轮次作为多轮上下文（FEAT-005 REQ-003）。
+/// 流式伴读启动参数包（companion_start 8 参超限收敛为单结构体）
+pub struct CompanionStartParams {
+    pub client: Box<dyn LlmClient + Send>,
+    pub storage: SqliteStorage,
+    pub config: LlmConfig,
+    pub book_id: i64,
+    pub template_type: String,
+    pub selected_text: String,
+    pub prompt: String,
+    pub thread_id: Option<String>,
+}
+
+pub fn companion_start(params: CompanionStartParams) -> String {
+    let CompanionStartParams {
+        client,
+        storage,
+        config,
+        book_id,
+        template_type,
+        selected_text,
+        prompt,
+        thread_id,
+    } = params;
     let start = Instant::now();
+    let started_at_ms = now_epoch_ms();
     let request_id = format!(
         "cs_{}_{}",
         std::time::SystemTime::now()
@@ -569,7 +592,22 @@ pub fn companion_start(
         book_id
     );
 
-    let state = Arc::new(Mutex::new(CompanionStreamState::default()));
+    // 多轮上下文：同线程既往轮次（prompt → response）按 id 升序拼入消息历史；
+    // 还原失败仅告警，不阻断本轮伴读
+    let history: Vec<(String, String)> = match thread_id.as_deref() {
+        Some(tid) if !tid.trim().is_empty() => storage
+            .get_thread_history(tid.trim(), 12)
+            .unwrap_or_else(|e| {
+                crate::log_warn!("[FALLBACK] 线程上下文还原失败 tid={}: {}", tid, e);
+                Vec::new()
+            }),
+        _ => Vec::new(),
+    };
+
+    let state = Arc::new(Mutex::new(CompanionStreamState {
+        started_at_ms,
+        ..CompanionStreamState::default()
+    }));
     companion_streams()
         .lock()
         .unwrap()
@@ -577,11 +615,12 @@ pub fn companion_start(
 
     let state_for_thread = Arc::clone(&state);
     std::thread::spawn(move || {
-        let messages = build_companion_messages(
+        let messages = build_companion_messages_with_history(
             &template_type,
             &selected_text,
             &prompt,
             &config.system_prompt,
+            &history,
         );
 
         let (response, offline) = if config.api_key.trim().is_empty() {
@@ -590,22 +629,26 @@ pub fn companion_start(
         } else {
             let state_for_delta = Arc::clone(&state_for_thread);
             let mut on_delta = |delta: &str| {
-                state_for_delta.lock().unwrap().partial.push_str(delta);
+                let mut st = state_for_delta.lock().unwrap();
+                if st.first_delta_at_ms.is_none() {
+                    st.first_delta_at_ms = Some(now_epoch_ms());
+                }
+                st.partial.push_str(delta);
             };
             match chat_with_retry_stream(
                 client.as_ref(),
                 &config,
                 &messages,
-                MAX_RETRIES,
+                config.max_retries.max(1),
                 BASE_DELAY_MS,
-                |d| std::thread::sleep(d),
+                std::thread::sleep,
                 &mut on_delta,
             ) {
                 Ok(content) => (content, false),
                 Err(err) => {
                     crate::log_warn!(
                         "[FALLBACK] 流式 LLM 调用重试 {} 次后耗尽: {}，走离线启发卡片",
-                        MAX_RETRIES,
+                        config.max_retries.max(1),
                         err
                     );
                     (companion_offline_text(&template_type, &selected_text), true)
@@ -628,6 +671,7 @@ pub fn companion_start(
             prompt: prompt.clone(),
             response: response.clone(),
             latency_ms,
+            thread_id: thread_id.clone(),
         };
         if let Err(e) = storage.save_ai_conversation(&conv) {
             crate::log_error!("[ERROR] AI 会话持久化失败: {}", e);
@@ -636,6 +680,10 @@ pub fn companion_start(
 
         // 终态覆盖（partial 全文为权威，见 chat_with_retry_stream 注释）
         let mut st = state_for_thread.lock().unwrap();
+        if st.first_delta_at_ms.is_none() {
+            // 离线卡片整段产出：TTFT 记为终态到达时刻
+            st.first_delta_at_ms = Some(now_epoch_ms());
+        }
         st.partial = response;
         st.done = true;
         st.offline = offline;
@@ -695,6 +743,8 @@ mod companion_stream_tests {
                 partial: String::new(),
                 done,
                 offline: false,
+                started_at_ms: 0,
+                first_delta_at_ms: None,
                 finished_at_ms,
             }))
         };
@@ -728,15 +778,16 @@ mod companion_stream_tests {
     #[test]
     fn companion_stream_offline_path_done_with_prefix() {
         let storage = SqliteStorage::init_db(&temp_db("offline")).unwrap();
-        let request_id = companion_start(
-            Box::new(MockLlmClient::new(vec![Ok("不应被调用".to_string())])),
+        let request_id = companion_start(CompanionStartParams {
+            client: Box::new(MockLlmClient::new(vec![Ok("不应被调用".to_string())])),
             storage,
-            test_config(""), // api_key 空 → 离线
-            1,
-            "general".to_string(),
-            "选区文本".to_string(),
-            String::new(),
-        );
+            config: test_config(""), // api_key 空 → 离线
+            book_id: 1,
+            template_type: "general".to_string(),
+            selected_text: "选区文本".to_string(),
+            prompt: String::new(),
+            thread_id: None,
+        });
         let state = poll_until_done(&request_id, 3000).expect("应在超时前完成");
         assert!(state.offline);
         assert!(state.partial.starts_with("【离线模式】"));
@@ -748,15 +799,16 @@ mod companion_stream_tests {
     #[test]
     fn companion_stream_mock_client_done_with_full_text() {
         let storage = SqliteStorage::init_db(&temp_db("mock")).unwrap();
-        let request_id = companion_start(
-            Box::new(MockLlmClient::new(vec![Ok("流式全文内容".to_string())])),
+        let request_id = companion_start(CompanionStartParams {
+            client: Box::new(MockLlmClient::new(vec![Ok("流式全文内容".to_string())])),
             storage,
-            test_config("sk-test"), // 有 key → 走（默认非流式降级的）chat_stream
-            1,
-            "logic".to_string(),
-            "选区文本".to_string(),
-            String::new(),
-        );
+            config: test_config("sk-test"), // 有 key → 走（默认非流式降级的）chat_stream
+            book_id: 1,
+            template_type: "logic".to_string(),
+            selected_text: "选区文本".to_string(),
+            prompt: String::new(),
+            thread_id: None,
+        });
         let state = poll_until_done(&request_id, 3000).expect("应在超时前完成");
         assert!(!state.offline);
         assert_eq!(state.partial, "流式全文内容");
@@ -816,6 +868,9 @@ mod llm_companion_tests {
                 total_pages: 0,
                 read_progress: 0.0,
                 last_read_at: None,
+                read_section_id: None,
+                read_paragraph_index: 0,
+                read_char_offset: 0,
             })
             .unwrap()
     }
@@ -934,6 +989,8 @@ mod annotation_update_tests {
             note_text: Some("旧批注".to_string()),
             anchor_json: "{}".to_string(),
             ai_response: None,
+            origin: "manual".to_string(),
+            idem_key: None,
         }
     }
 
@@ -957,6 +1014,9 @@ mod annotation_update_tests {
                 total_pages: 0,
                 read_progress: 0.0,
                 last_read_at: None,
+                read_section_id: None,
+                read_paragraph_index: 0,
+                read_char_offset: 0,
             })
             .unwrap();
 

@@ -139,6 +139,22 @@ mod tests {
     }
 }
 
+/// 多文档词频统计（TF-IDF 的 df 项）：每个 section 视作一篇文档，
+/// 统计词项出现在多少篇文档中——此前 service 传空 df 使 idf 恒为常数 1.0，
+/// TF-IDF 名存实亡、退化成纯词频。
+pub fn doc_frequencies(section_tokens: &[Vec<String>]) -> HashMap<String, usize> {
+    let mut df: HashMap<String, usize> = HashMap::new();
+    for tokens in section_tokens {
+        let mut seen: HashSet<&String> = HashSet::new();
+        for t in tokens {
+            if seen.insert(t) {
+                *df.entry(t.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    df
+}
+
 pub fn calculate_tfidf(tokens: &[String], total_docs: usize, doc_freqs: &HashMap<String, usize>) -> Vec<(String, f64, i32)> {
     let mut term_counts: HashMap<String, i32> = HashMap::new();
     for t in tokens {
@@ -160,67 +176,98 @@ pub fn calculate_tfidf(tokens: &[String], total_docs: usize, doc_freqs: &HashMap
     scored
 }
 
+/// TextRank 词表上限：按词频截断，保证共现图规模有界（10 万字中文 bigram
+/// 原始词汇量可达数万，不截断则边数与迭代成本失控）
+const TEXTRANK_MAX_VOCAB: usize = 2000;
+
+/// 稀疏图幂迭代 TextRank：窗口共现构建无向边 → 邻接表 → O(E·iterations)。
+/// 此前实现为 O(vocab²) 双重循环且每轮重复重算全表出权，中文长文上不可行。
 pub fn calculate_textrank(tokens: &[String], window_size: usize, iterations: usize) -> Vec<(String, f64)> {
     if tokens.is_empty() {
         return Vec::new();
     }
 
-    let mut co_occur: HashMap<(String, String), f64> = HashMap::new();
-    let mut vocab: HashSet<String> = HashSet::new();
+    // 1) 词频排序截断词表（稳定排序保证同频词序确定）
+    let mut freq: HashMap<&str, usize> = HashMap::new();
+    for t in tokens {
+        *freq.entry(t.as_str()).or_insert(0) += 1;
+    }
+    let mut ranked_vocab: Vec<(&str, usize)> = freq.into_iter().collect();
+    ranked_vocab.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    ranked_vocab.truncate(TEXTRANK_MAX_VOCAB);
+    let index: HashMap<&str, u32> = ranked_vocab
+        .iter()
+        .enumerate()
+        .map(|(i, (w, _))| (*w, i as u32))
+        .collect();
 
+    // 2) 窗口共现 → 无向边权
+    let mut edge_weight: HashMap<(u32, u32), f64> = HashMap::new();
     for i in 0..tokens.len() {
+        let Some(&wi) = index.get(tokens[i].as_str()) else { continue };
         let end = (i + window_size).min(tokens.len());
-        let w1 = &tokens[i];
-        vocab.insert(w1.clone());
-        for j in (i + 1)..end {
-            let w2 = &tokens[j];
-            if w1 != w2 {
-                *co_occur.entry((w1.clone(), w2.clone())).or_insert(0.0) += 1.0;
-                *co_occur.entry((w2.clone(), w1.clone())).or_insert(0.0) += 1.0;
+        for w2 in &tokens[i + 1..end] {
+            let Some(&wj) = index.get(w2.as_str()) else { continue };
+            if wi == wj {
+                continue;
             }
+            let key = if wi < wj { (wi, wj) } else { (wj, wi) };
+            *edge_weight.entry(key).or_insert(0.0) += 1.0;
         }
     }
-
-    let vocab_vec: Vec<String> = vocab.into_iter().collect();
-    let n = vocab_vec.len();
-    if n == 0 {
+    if edge_weight.is_empty() {
         return Vec::new();
     }
 
-    let d = 0.85;
-    let mut scores: HashMap<String, f64> = vocab_vec.iter().map(|w| (w.clone(), 1.0 / n as f64)).collect();
-
-    for _ in 0..iterations {
-        let mut new_scores = HashMap::new();
-        for vi in &vocab_vec {
-            let mut sum_val = 0.0;
-            for vj in &vocab_vec {
-                if let Some(&weight) = co_occur.get(&(vj.clone(), vi.clone())) {
-                    let total_out: f64 = vocab_vec.iter().map(|vk| co_occur.get(&(vj.clone(), vk.clone())).cloned().unwrap_or(0.0)).sum();
-                    if total_out > 0.0 {
-                        sum_val += (weight / total_out) * scores.get(vj).cloned().unwrap_or(0.0);
-                    }
-                }
-            }
-            new_scores.insert(vi.clone(), (1.0 - d) + d * sum_val);
-        }
-        scores = new_scores;
+    // 3) 邻接表 + 出权累计
+    let n = index.len();
+    let mut adj: Vec<Vec<(u32, f64)>> = vec![Vec::new(); n];
+    let mut out_weight = vec![0.0f64; n];
+    for ((a, b), w) in &edge_weight {
+        adj[*a as usize].push((*b, *w));
+        adj[*b as usize].push((*a, *w));
+        out_weight[*a as usize] += w;
+        out_weight[*b as usize] += w;
     }
 
-    let mut ranked: Vec<(String, f64)> = scores.into_iter().collect();
+    // 4) 幂迭代（经典归一化 PageRank：score = (1-d)/n + d·Σ w/out·score）
+    let d = 0.85;
+    let mut scores = vec![1.0f64 / n as f64; n];
+    for _ in 0..iterations {
+        let mut next = vec![(1.0 - d) / n as f64; n];
+        for vj in 0..n {
+            if out_weight[vj] <= 0.0 {
+                continue;
+            }
+            let base = d * scores[vj] / out_weight[vj];
+            for &(vi, w) in &adj[vj] {
+                next[vi as usize] += base * w;
+            }
+        }
+        scores = next;
+    }
+
+    let mut ranked: Vec<(String, f64)> = ranked_vocab
+        .iter()
+        .filter_map(|(w, _)| index.get(w).map(|i| ((*w).to_string(), scores[*i as usize])))
+        .collect();
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     ranked
 }
 
+/// 关键词共现图 + 真实 PMI 边权：
+/// PMI = ln( P(x,y) / (P(x)·P(y)) )，此前实现把共现计数缩放取对数冒充 PMI，
+/// 缺失边缘概率归一，导致高频词间必然"强相关"的假边大量入选。
 pub fn build_co_occurrence(tokens: &[String], keywords: &[KeywordNode], window_size: usize) -> Vec<KeywordRelation> {
     let kw_map: HashMap<String, i64> = keywords.iter().map(|k| (k.word.clone(), k.id)).collect();
+    let word_by_id: HashMap<i64, String> = keywords.iter().map(|k| (k.id, k.word.clone())).collect();
     let mut pair_counts: HashMap<(i64, i64), i32> = HashMap::new();
 
     for i in 0..tokens.len() {
         let end = (i + window_size).min(tokens.len());
         if let Some(&id1) = kw_map.get(&tokens[i]) {
-            for j in (i + 1)..end {
-                if let Some(&id2) = kw_map.get(&tokens[j]) {
+            for w2 in &tokens[i + 1..end] {
+                if let Some(&id2) = kw_map.get(w2) {
                     if id1 != id2 {
                         let key = if id1 < id2 { (id1, id2) } else { (id2, id1) };
                         *pair_counts.entry(key).or_insert(0) += 1;
@@ -230,13 +277,26 @@ pub fn build_co_occurrence(tokens: &[String], keywords: &[KeywordNode], window_s
         }
     }
 
-    let mut relations = Vec::new();
-    let total_windows = tokens.len().max(1) as f64;
+    // 边缘概率：P(w) = freq(w) / N；联合概率：P(x,y) = co_count / N
+    let total = tokens.len().max(1) as f64;
+    let mut freqs: HashMap<&str, f64> = HashMap::new();
+    for t in tokens {
+        *freqs.entry(t.as_str()).or_insert(0.0) += 1.0;
+    }
+    // PMI 归一化参考上界：ln(N)（P(x)·P(y) 趋近最小时 PMI 的量级锚点）
+    let pmi_scale = total.ln().max(1.0);
 
+    let mut relations = Vec::new();
     for ((src, tgt), count) in pair_counts {
-        let p_xy = count as f64 / total_windows;
-        let pmi = if p_xy > 0.0 { (p_xy * 100.0).ln().max(0.1) } else { 0.1 };
-        let weight = (pmi / 5.0).min(1.0);
+        let p_xy = count as f64 / total;
+        let p_x = word_by_id.get(&src).and_then(|w| freqs.get(w.as_str())).copied().unwrap_or(0.0) / total;
+        let p_y = word_by_id.get(&tgt).and_then(|w| freqs.get(w.as_str())).copied().unwrap_or(0.0) / total;
+        let pmi = if p_xy > 0.0 && p_x > 0.0 && p_y > 0.0 {
+            (p_xy / (p_x * p_y)).ln()
+        } else {
+            0.0
+        };
+        let weight = if pmi <= 0.0 { 0.0 } else { (pmi / pmi_scale).min(1.0) };
 
         relations.push(KeywordRelation {
             id: 0,
@@ -256,4 +316,75 @@ pub fn build_co_occurrence(tokens: &[String], keywords: &[KeywordNode], window_s
 
     relations.sort_by(|a, b| b.weight.partial_cmp(&a.weight).unwrap_or(std::cmp::Ordering::Equal));
     relations
+}
+
+#[cfg(test)]
+mod nlp_quality_tests {
+    use super::*;
+    use crate::domain::{KeywordNode, KeywordRelation};
+
+    fn kw(id: i64, word: &str) -> KeywordNode {
+        KeywordNode {
+            id, created_at: String::new(), updated_at: String::new(), description: None,
+            is_del: 0, version: 1, book_id: 1, word: word.to_string(),
+            level: "book".into(), tfidf_score: 0.0, textrank_score: 0.0, frequency: 0,
+        }
+    }
+
+    #[test]
+    fn textrank_ranks_repeated_hub_word_first() {
+        // 星型共现图：「快照」与四个互不相连的词相邻，PageRank 必然置顶中心词；
+        // 注：小而稠密的短句图上 PR 趋近均匀，属正确行为而非 bug
+        let text = "快照 隔离。快照 日志。快照 事务。快照 索引。";
+        let ranked = calculate_textrank(&tokenize(text), 2, 20);
+        assert!(!ranked.is_empty());
+        assert_eq!(ranked[0].0, "快照", "星型图中心词应居首: {:?}", &ranked[..3.min(ranked.len())]);
+    }
+
+    #[test]
+    fn textrank_handles_long_token_stream_quickly() {
+        // 3 万 token 规模下必须瞬时完成（O(E) 迭代，vocab 截断上界 2000）
+        let mut tokens = Vec::new();
+        for i in 0..15000 {
+            tokens.push(format!("词{:02}", i % 40));
+        }
+        let start = std::time::Instant::now();
+        let ranked = calculate_textrank(&tokens, 10, 5);
+        assert!(!ranked.is_empty());
+        assert!(start.elapsed().as_millis() < 2000, "3 万 token TextRank 应在 2s 内: {:?}", start.elapsed());
+    }
+
+    #[test]
+    fn pmi_rewards_exclusive_cooccurrence_and_stays_bounded() {
+        // 「日志」「快照」只在彼此窗口内共现 → PMI 为正且显著；
+        // 「系统」与谁都共现（高边缘概率）→ PMI 被压制
+        let tokens: Vec<String> = tokenize("日志快照记录状态。日志快照保存现场。系统整体保持平稳。系统承载快照。系统承载日志。")
+            .into_iter()
+            .collect();
+        let keywords = vec![kw(1, "日志"), kw(2, "快照"), kw(3, "系统"), kw(4, "承载"), kw(5, "保持")];
+        let rels: Vec<KeywordRelation> = build_co_occurrence(&tokens, &keywords, 6);
+        assert!(!rels.is_empty());
+        for r in &rels {
+            assert!(r.weight >= 0.0 && r.weight <= 1.0, "weight 应归一化到 [0,1]: {}", r.weight);
+            assert!(r.pmi_score.is_finite(), "PMI 必须有限: {}", r.pmi_score);
+        }
+        let pmi = |a: i64, b: i64| rels.iter().find(|r| (r.source_word_id, r.target_word_id) == (a.min(b), b.max(a))).map(|r| r.pmi_score);
+        let strong = pmi(1, 2); // 日志-快照 专享共现
+        assert!(strong.is_some(), "日志-快照应有共现边");
+        if let (Some(s), Some(sl)) = (strong, pmi(1, 3)) {
+            assert!(s > sl, "专享共现 PMI 应高于高频泛化词对: 日志-快照={s:?}, 日志-系统={sl:?}");
+        }
+    }
+
+    #[test]
+    fn doc_frequencies_counts_per_document_presence() {
+        let docs = vec![
+            tokenize("日志快照原子性"),
+            tokenize("日志恢复机制"),
+            tokenize("无关内容完全不同"),
+        ];
+        let df = doc_frequencies(&docs);
+        assert_eq!(df.get("日志"), Some(&2), "日志出现在两篇文档");
+        assert_eq!(df.get("快照"), Some(&1), "快照只出现在一篇文档");
+    }
 }

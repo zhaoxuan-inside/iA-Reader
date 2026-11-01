@@ -152,11 +152,17 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
         self.assertIn("预写式日志", joined)
         self.assertIn("快照隔离", joined)
 
-        # 导图：根节点 + 章节节点携带 section_id 供跳转
+        # 导图：根节点 + 章节分支（depth=1，携带 section_id）+ 章节核心词叶（depth=2）
         code, data, msg, _ = self.invoke("mindmap.generate", {"book_id": self.book_id})
         self.assertEqual(code, 0, msg)
-        section_nodes = [n for n in data["nodes"] if n["section_id"] is not None]
-        self.assertEqual(len(section_nodes), 2, "两个章节应各产生一个导图节点")
+        branch_nodes = [n for n in data["nodes"] if n["depth"] == 1 and n["section_id"] is not None]
+        self.assertEqual(len(branch_nodes), 2, "两个章节应各产生一个分支节点")
+        leaf_nodes = [n for n in data["nodes"] if n["depth"] == 2]
+        self.assertTrue(leaf_nodes, "章节核心词叶节点（第三层）应存在")
+        self.assertTrue(
+            all(n["label"] not in ("核心概念", "重点") for n in leaf_nodes),
+            "叶节点不得是占位串",
+        )
 
         # 词云：离线 NLP 抽取得出关键词
         code, data, msg, _ = self.invoke("nlp.keyword_extract", {"book_id": self.book_id})
@@ -281,10 +287,16 @@ class TestRustEngineFullFlowE2E(unittest.TestCase):
         code, data, _, _ = self.invoke("config.get", {})
         self.assertEqual(data["config"]["api_key_configured"], True, "掩码占位保存后真实密钥应保留")
 
-        # 真实密钥确实落盘（读配置文件本体，而非回显通道）
+        # 真实密钥落盘形态（FEAT-006 加密存储）：JSON 主配置不含明文，
+        # 密文在 llm_secret（AES-GCM），主密钥 .keystone 0600
         import json as _json
         saved_cfg = _json.loads((self.home / "config" / "llm_config.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved_cfg["api_key"], "sk-e2e-.roundtrip")
+        self.assertEqual(saved_cfg["api_key"], "", "主配置 JSON 不得含明文密钥")
+        secret_file = self.home / "config" / "llm_secret"
+        self.assertTrue(secret_file.exists(), "密文文件应存在")
+        self.assertNotIn("sk-e2e-.roundtrip", secret_file.read_text(encoding="utf-8"),
+                         "密文文件不得含明文")
+        self.assertTrue((self.home / "config" / ".keystone").exists(), "主密钥文件应存在")
 
         # 持久化到用户配置文件（集中存储 ADR_005：<base>/config/llm_config.json）
         self.assertTrue((self.home / "config" / "llm_config.json").exists())
