@@ -6,5 +6,5 @@ Icon=ai-reader
 Terminal=false
 Type=Application
 Categories=Office;Viewer;Education;
-MimeType=application/pdf;application/epub+zip;text/markdown;text/plain;
+MimeType=text/markdown;text/plain;
 StartupNotify=true

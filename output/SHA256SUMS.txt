@@ -1,1 +1,1 @@
-20d01fcb1471122575c646beecbdf5c5050ad5ce475bbd3f01ccff97d871013c  linux/ai-reader_0.0.9_amd64.deb
+8de16bd632767d2777cf0d1f8f21633bbe951861fcad7d412ca98c47fa5bdc30  linux/ai-reader_0.0.15_amd64.deb
