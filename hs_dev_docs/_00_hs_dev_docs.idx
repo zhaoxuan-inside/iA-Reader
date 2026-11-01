@@ -1,9 +1,0 @@
-{"version": "1.0", "category": "root", "root": "hs_dev_docs"}
-{"id": "domain_foundation", "title": "项目基座与全局规范", "path": "_00_project_foundation/_00_project_foundation.idx", "status": "active", "digest": "b017cbd5"}
-{"id": "domain_vision", "title": "产品愿景与分阶段定界", "path": "_01_product_vision/_00_product_vision.idx", "status": "active", "digest": "0f87e732"}
-{"id": "domain_feature_spec", "title": "特性详细规格与原型契约", "path": "_02_feature_spec/_00_feature_spec.idx", "status": "active", "digest": "e4de65ff"}
-{"id": "domain_architecture", "title": "系统架构设计与模式集群", "path": "_03_architecture_design/_00_architecture_design.idx", "status": "active", "digest": "d4dfd521"}
-{"id": "domain_contract", "title": "工程四要素详细契约", "path": "_04_engineering_contract/_00_engineering_contract.idx", "status": "active", "digest": "812abcc9"}
-{"id": "domain_task", "title": "任务编排与极速装配", "path": "_05_task_orchestration/_00_task_orchestration.idx", "status": "active", "digest": "3b99a375"}
-{"id": "domain_process", "title": "开发过程与治理审计", "path": "_06_dev_process/_00_dev_process.idx", "status": "active", "digest": "41eff8ee"}
-{"id": "doc_reading_guide", "title": "项目文档阅读说明与全局索引导航", "path": "_00_docs_compass.md", "status": "active", "digest": "4d651b8c"}
