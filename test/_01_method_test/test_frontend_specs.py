@@ -88,7 +88,9 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
         self.assertIn("'逻辑'", pill_code)
         self.assertIn("'批判'", pill_code)
         self.assertIn("'术语'", pill_code)
-        self.assertIn("'高亮'", pill_code)
+        # 高亮走「标注」面板（样式×颜色两维选择后应用），胶囊不再直通高亮
+        self.assertIn("'标注'", pill_code)
+        self.assertIn("onAnnotationPalette", pill_code)
 
     def test_06_ffi_bridge_six_tuple_envelope_compliance(self):
         """验证 FFI 桥接客户端与六元组信封结构的兼容性"""
@@ -145,7 +147,7 @@ class TestFrontendSpecificationsAndState(unittest.TestCase):
 
         # 3. 划词悬浮胶囊 5 按钮与高亮
         self.assertIn("FloatingActionPill", code)
-        self.assertIn("_handleHighlight", code)
+        self.assertIn("_applyAnnotation", code, "高亮路径应经标注应用链路")
 
         # 4. 伴读抽屉原位追问与边注保存
         self.assertIn("CompanionDrawer", code)

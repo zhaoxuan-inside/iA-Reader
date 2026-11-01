@@ -108,11 +108,18 @@ class TestFfiContract(unittest.TestCase):
         self.assertEqual(code, 0, f"book.parse 失败: {msg}")
         return data["id"], md
 
-    def test_duplicate_import_rejected(self):
+    def test_duplicate_import_idempotent_locate(self):
         book_id, md = self._import_sample_book()
-        code, _, msg = self.invoke("book.parse", {"file_path": str(md)})
-        self.assertNotEqual(code, 0, "同内容重复导入必须被拦截（FEAT-001 去重）")
-        self.assertIn("已在书库", msg)
+        # FEAT-001 幂等定位：同内容重复导入返回既有书目（duplicate=true），不重复入库
+        code, data, msg = self.invoke("book.parse", {"file_path": str(md)})
+        self.assertEqual(code, 0, f"重复导入应幂等定位而非报错: {msg}")
+        self.assertTrue(data["duplicate"], "重复导入应返回 duplicate=true")
+        self.assertEqual(data["id"], book_id, "应定位到既有书目 id")
+        # 书库不出现重复条目
+        code, data, _ = self.invoke("book.list", {})
+        self.assertEqual(code, 0)
+        same_hash = [b for b in data["books"] if b["id"] == book_id]
+        self.assertEqual(len(same_hash), 1, "书库不得出现重复条目")
         # 原书不受影响
         code, doc, _ = self.invoke("book.get", {"book_id": book_id})
         self.assertEqual(code, 0)
