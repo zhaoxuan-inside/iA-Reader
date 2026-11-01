@@ -7,11 +7,14 @@ import 'word_cloud.dart';
 class TocSectionItem {
   final int id;
   final String title;
+  /// Markdown 标题层级（# =1 … ###### =6）：目录树缩进依据
+  final int level;
   final String? startParagraphId;
 
   const TocSectionItem({
     required this.id,
     required this.title,
+    this.level = 1,
     this.startParagraphId,
   });
 }
@@ -163,18 +166,25 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
           child: TabBarView(
             controller: _tabController,
             children: [
-              // Tab 1: 章节 AST 目录
+              // Tab 1: 章节 AST 目录（层级缩进：H2 +12px，H3+ 每级再进 12px）
               ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 8.0),
                 itemCount: widget.sections.length,
                 itemBuilder: (context, index) {
                   final sec = widget.sections[index];
                   final isActive = sec.id == widget.activeSectionId;
+                  final indent = sec.level <= 1
+                      ? 0.0
+                      : (sec.level - 1) * 12.0;
                   return InkWell(
                     onTap: () => widget.onSectionSelected(sec),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16.0, vertical: 10.0),
+                      padding: EdgeInsets.only(
+                        left: 16.0 + indent,
+                        right: 16.0,
+                        top: 10.0,
+                        bottom: 10.0,
+                      ),
                       decoration: BoxDecoration(
                         color: isActive
                             ? (isDark
@@ -191,9 +201,12 @@ class _TocMindmapDrawerState extends State<TocMindmapDrawer>
                       child: Text(
                         sec.title,
                         style: TextStyle(
-                          fontSize: 13.0,
-                          fontWeight:
-                              isActive ? FontWeight.w600 : FontWeight.normal,
+                          fontSize: sec.level <= 1 ? 13.0 : 12.2,
+                          fontWeight: isActive
+                              ? FontWeight.w600
+                              : sec.level <= 1
+                                  ? FontWeight.w500
+                                  : FontWeight.normal,
                           color: isActive ? accentColor : textPrimary,
                           height: 1.4,
                         ),

@@ -19,6 +19,8 @@ class AnnotationManagerModal extends StatelessWidget {
   final List<AnnotationListEntry> entries;
   final ValueChanged<String> onDelete;
   final void Function(String annotationId, String currentNote) onEdit;
+  /// 定位跳转（FEAT-007 REQ-004）：回正文锚点段落
+  final void Function(AnnotationListEntry entry)? onLocate;
   final VoidCallback onClose;
 
   const AnnotationManagerModal({
@@ -26,18 +28,21 @@ class AnnotationManagerModal extends StatelessWidget {
     required this.entries,
     required this.onDelete,
     required this.onEdit,
+    this.onLocate,
     required this.onClose,
   });
 
   @override
   Widget build(BuildContext context) {
-    return buildContent(onDelete: onDelete, onEdit: onEdit, onClose: onClose);
+    return buildContent(
+        onDelete: onDelete, onEdit: onEdit, onClose: onClose, onLocate: onLocate);
   }
 
   Widget buildContent({
     required ValueChanged<String> onDelete,
     required void Function(String annotationId, String currentNote) onEdit,
     required VoidCallback onClose,
+    void Function(AnnotationListEntry entry)? onLocate,
   }) {
     return Builder(builder: (context) {
       final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -107,6 +112,15 @@ class AnnotationManagerModal extends StatelessWidget {
                                       fontWeight: FontWeight.w500,
                                       color: color)),
                               const Spacer(),
+                              if (onLocate != null)
+                                Tooltip(
+                                  message: '定位到正文锚点',
+                                  child: GestureDetector(
+                                    onTap: () => onLocate(e),
+                                    child: Icon(Icons.my_location, size: 15.0, color: textSecondary),
+                                  ),
+                                ),
+                              if (onLocate != null) const SizedBox(width: 8.0),
                               if (e.item.noteText != null && e.item.noteText!.isNotEmpty)
                                 Tooltip(
                                   message: '编辑标注 ${e.item.id}',

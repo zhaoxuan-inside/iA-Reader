@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import 'core/widgets/frosted_modal.dart';
 import 'core/widgets/window_controls.dart';
 import 'core/window/window_channel.dart';
 import 'features/reader/presentation/controllers/focus_mode_controller.dart';
+import 'features/reader/presentation/markdown_inline.dart';
 import 'features/selection_pill/presentation/floating_action_pill.dart';
 import 'features/selection_pill/domain/pill_anchor.dart';
 import 'features/annotation/domain/annotation_item.dart';
@@ -16,6 +19,7 @@ import 'features/annotation/presentation/annotation_manager.dart';
 import 'features/annotation/presentation/note_editor_popover.dart';
 import 'features/ai_keyboard/presentation/ai_keyboard_panel.dart';
 import 'features/ai_keyboard/domain/ai_target_resolver.dart';
+import 'features/companion/domain/companion_session.dart';
 import 'features/companion/presentation/companion_drawer.dart';
 import 'features/mobile_sheet/presentation/mobile_companion_sheet.dart';
 import 'features/toc_mindmap/presentation/toc_mindmap_drawer.dart';
@@ -174,34 +178,52 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
   late final FocusModeController _focusController;
   final ScrollController _scrollController = ScrollController();
 
-  // 顶栏自动淡出隐退控制 (iA Writer Immersion)
+  // 顶栏自动淡出隐退控制 (iA Writer Immersion)：
+  // 滚动方向隐退 + 3s 阅读静止自动隐退（FEAT-003 REQ-003）
   bool _isHeaderVisible = true;
   double _lastScrollOffset = 0.0;
+  Timer? _headerIdleTimer;
 
   // 文档状态
   late int _currentBookId;
-  String _currentBookTitle = '分布式系统高可靠存储与认知解析';
+  String _currentBookTitle = '';
   int _activeSectionId = 1;
   List<TocSectionItem> _tocSections = [];
   List<MindmapNodeItem> _mindmapNodes = [];
   List<KeywordTagItem> _keywords = [];
   List<Map<String, dynamic>> _paragraphs = [];
+  /// 渲染清单：{kind:'header'}（章节标题行，带层级）与 {kind:'para'}（正文段落）
+  List<Map<String, dynamic>> _renderItems = [];
+  /// 段落行内 Markdown 预解析缓存（pId → plain + 语义段）
+  final Map<String, InlineMarkdown> _paraMarkdown = {};
   // 段落锚点：划词胶囊定位到选区所在段落/选区矩形旁
   final Map<String, GlobalKey> _paraKeys = {};
   // 选区级标注（task_12 D5）：含高亮区间与边注，经 annotation.* FFI 持久化
   final List<AnnotationItem> _annotations = [];
-  // 默认高亮色：DESIGN.md highlight-mark 琥珀黄（渲染时叠加 35% 透明度）
-  static const String _defaultHighlightHex = '#CA8A04';
+
+  // 文档加载失败态：显式错误 + 重试入口（此前静默保持空白页）
+  String? _docLoadError;
+  // 词云/导图定位落点的短暂强调（1.2s 自动消退）
+  String? _flashParagraphId;
+  Timer? _flashTimer;
+
+  // 伴读会话（FEAT-005 REQ-006）：生命周期跟随工作台，关抽屉不丢上下文
+  final CompanionSession _companionSession = CompanionSession();
+  // LLM 配置态缓存：未配置时划词触发伴读 → 引导设置并保留选区（FEAT-004 REQ-005）
+  bool _llmConfigured = true;
+
+  // 阅读进度（FEAT-002 REQ-005）：滚动停止 1.2s 后防抖落库；打开书恢复续读位置
+  Timer? _progressSaveTimer;
+  bool _restoredProgressForBook = false;
 
   // 抽屉状态：默认全关闭，给用户最纯净的开屏阅读世界
   bool _isTocOpen = false;
-  String _activeAnalysisText = '';
   CognitiveTemplateType _activeTemplate = CognitiveTemplateType.general;
   // 最近一次伴读响应是否为离线降级卡片（驱动抽屉内"立即配置"提示）
   bool _companionOffline = false;
-  // 伴读会话代际：每次新触发 +1；轮询循环发现代际或书目变化即作废，
+  // 伴读代际计数：每次新触发 +1；轮询循环发现代际或书目变化即作废，
   // 防止旧流的渐进渲染/终态覆盖新一轮伴读（关抽屉/换书后也不再空转）
-  int _companionSession = 0;
+  int _companionGeneration = 0;
   Offset? _selectionPosition;
   String? _selectedTextCache;
   String? _selectedParagraphIdCache;
@@ -232,6 +254,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     _focusController = FocusModeController();
 
     _scrollController.addListener(_handleScroll);
+    _refreshLlmConfigured();
     _loadDocumentData(_currentBookId);
   }
 
@@ -240,14 +263,19 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialBookId != widget.initialBookId) {
       _currentBookId = widget.initialBookId;
+      _restoredProgressForBook = false;
       _loadDocumentData(_currentBookId);
     }
   }
 
   @override
   void dispose() {
+    _headerIdleTimer?.cancel();
+    _flashTimer?.cancel();
+    _progressSaveTimer?.cancel();
     _scrollController.dispose();
     _focusController.dispose();
+    _companionSession.dispose();
     super.dispose();
   }
 
@@ -263,48 +291,145 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
       }
     }
     _lastScrollOffset = offset;
+
+    // FEAT-003 REQ-003：3s 阅读静止自动隐退顶栏（滚动/唤出均重置计时）
+    _resetHeaderIdleTimer();
+
+    // FEAT-002 REQ-005：滚动停止 1.2s 后防抖保存续读进度
+    _progressSaveTimer?.cancel();
+    _progressSaveTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) _saveReadProgress();
+    });
+  }
+
+  void _resetHeaderIdleTimer() {
+    _headerIdleTimer?.cancel();
+    _headerIdleTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      if (_scrollController.offset > 50 && _isHeaderVisible) {
+        setState(() => _isHeaderVisible = false);
+      }
+    });
+  }
+
+  /// LLM 配置态缓存刷新：划词触发伴读前的引导判定依据
+  Future<void> _refreshLlmConfigured() async {
+    final res = await widget.bridge.invoke('config.get', {});
+    if (!mounted) return;
+    setState(() {
+      _llmConfigured = res.data['config']?['api_key_configured'] == true;
+    });
+  }
+
+  /// 计算当前可视段落并落库续读进度：
+  /// 精确路径 = 已构建段落的首个可见项索引；兜底 = 滚动比例
+  Future<void> _saveReadProgress() async {
+    if (_paragraphs.isEmpty) return;
+    int visibleIndex = -1;
+    for (var i = 0; i < _paragraphs.length; i++) {
+      final ctx = _paraKeys[_paragraphs[i]['id'] as String]?.currentContext;
+      if (ctx == null) continue;
+      final ro = ctx.findRenderObject();
+      if (ro is RenderBox && ro.hasSize) {
+        final top = ro.localToGlobal(Offset.zero).dy;
+        if (top >= 44.0) {
+          visibleIndex = i;
+          break;
+        }
+      }
+    }
+    final double ratio;
+    final Map<String, dynamic>? para;
+    if (visibleIndex >= 0) {
+      ratio = visibleIndex / _paragraphs.length;
+      para = _paragraphs[visibleIndex];
+    } else {
+      final extent = _scrollController.position.maxScrollExtent;
+      ratio = extent > 0 ? _scrollController.offset / extent : 0.0;
+      para = null;
+    }
+    await widget.bridge.invoke('progress.save', {
+      'book_id': _currentBookId,
+      'section_id': para?['section_id'],
+      'paragraph_index': visibleIndex >= 0 ? visibleIndex : 0,
+      'char_offset': 0,
+      'progress': ratio.clamp(0.0, 1.0),
+    });
   }
 
   Future<void> _loadDocumentData(int bookId) async {
-    // 1. 加载文档章节与段落
+    // 1. 加载文档章节与段落（失败显式报错 + 重试入口，不再静默空白）
     final docRes = await widget.bridge.invoke('book.get', {'book_id': bookId});
-    if (docRes.isSuccess) {
-      final docData = docRes.data;
-      final sectionsData = (docData['sections'] as List<dynamic>?) ?? [];
-
-      final loadedSections = <TocSectionItem>[];
-      final loadedParagraphs = <Map<String, dynamic>>[];
-
-      for (final sec in sectionsData) {
-        final secId = sec['id'] as int;
-        final secTitle = sec['title'] as String;
-        final paras = (sec['paragraphs'] as List<dynamic>?) ?? [];
-
-        loadedSections.add(TocSectionItem(
-          id: secId,
-          title: secTitle,
-          startParagraphId: paras.isNotEmpty ? paras.first['id'] as String : null,
-        ));
-
-        for (final p in paras) {
-          loadedParagraphs.add({
-            'id': p['id'] as String,
-            'section_id': secId,
-            'text': p['text'] as String,
-          });
-        }
-      }
-
+    if (!mounted) return;
+    if (!docRes.isSuccess) {
       setState(() {
-        _currentBookId = bookId;
-        _currentBookTitle = docData['title'] ?? _currentBookTitle;
-        _tocSections = loadedSections;
-        _paragraphs = loadedParagraphs;
+        _docLoadError = docRes.message;
+        _paragraphs = [];
+        _renderItems = [];
+        _tocSections = [];
       });
+      return;
     }
+    final docData = docRes.data;
+    final sectionsData = (docData['sections'] as List<dynamic>?) ?? [];
+    final meta = (docData['meta'] as Map<String, dynamic>?) ?? {};
+
+    final loadedSections = <TocSectionItem>[];
+    final loadedParagraphs = <Map<String, dynamic>>[];
+    final renderItems = <Map<String, dynamic>>[];
+
+    for (final sec in sectionsData) {
+      final secId = sec['id'] as int;
+      final secTitle = sec['title'] as String;
+      final secLevel = (sec['level'] as num?)?.toInt() ?? 1;
+      final paras = (sec['paragraphs'] as List<dynamic>?) ?? [];
+
+      loadedSections.add(TocSectionItem(
+        id: secId,
+        title: secTitle,
+        level: secLevel,
+        startParagraphId: paras.isNotEmpty ? paras.first['id'] as String : null,
+      ));
+
+      // 章节标题行内联进正文（FEAT-002 REQ-003）：层级驱动缩进与字号
+      renderItems.add({
+        'kind': 'header',
+        'section_id': secId,
+        'title': secTitle,
+        'level': secLevel,
+      });
+      for (final p in paras) {
+        final pId = p['id'] as String;
+        final text = p['text'] as String;
+        loadedParagraphs.add({
+          'id': pId,
+          'section_id': secId,
+          'text': text,
+        });
+        _paraMarkdown[pId] = InlineMarkdown.parse(text);
+        renderItems.add({
+          'kind': 'para',
+          'id': pId,
+          'section_id': secId,
+          'text': text,
+        });
+      }
+    }
+
+    setState(() {
+      _currentBookId = bookId;
+      _currentBookTitle = docData['title'] ?? '';
+      _docLoadError = null;
+      _tocSections = loadedSections;
+      _paragraphs = loadedParagraphs;
+      _renderItems = renderItems;
+      _paraKeys.clear();
+      _restoredProgressForBook = false;
+    });
 
     // 2. 加载思维导图
     final mmRes = await widget.bridge.invoke('mindmap.generate', {'book_id': bookId});
+    if (!mounted) return;
     if (mmRes.isSuccess) {
       final nodes = (mmRes.data['nodes'] as List<dynamic>?) ?? [];
       setState(() {
@@ -322,6 +447,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
     // 3. 加载核心关键词
     final kwRes = await widget.bridge.invoke('nlp.keyword_extract', {'book_id': bookId});
+    if (!mounted) return;
     if (kwRes.isSuccess) {
       final kws = (kwRes.data['keywords'] as List<dynamic>?) ?? [];
       setState(() {
@@ -337,6 +463,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
 
     // 4. 加载已有标注（高亮区间 + 边注），回填选区级渲染
     final annRes = await widget.bridge.invoke('annotation.list', {'book_id': bookId});
+    if (!mounted) return;
     if (annRes.isSuccess) {
       final anns = (annRes.data['annotations'] as List<dynamic>?) ?? [];
       setState(() {
@@ -348,22 +475,48 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
               .where((a) => a.paragraphId.isNotEmpty));
       });
     }
+
+    // 5. 续读恢复（FEAT-002 REQ-005）：上次读到 paragraph_index 处直接定位
+    if (!_restoredProgressForBook) {
+      _restoredProgressForBook = true;
+      final resumeIndex = (meta['read_paragraph_index'] as num?)?.toInt() ?? 0;
+      final hasProgress = (meta['read_progress'] as num?)?.toDouble() ?? 0.0;
+      if (hasProgress > 0.01 && resumeIndex > 0 && resumeIndex < _paragraphs.length) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _scrollToParagraph(_paragraphs[resumeIndex]['id'] as String, animate: false);
+        });
+      }
+    }
   }
 
-  void _triggerCompanion(String paragraphId, String text, CognitiveTemplateType template) async {
-    final session = ++_companionSession;
+  /// 未配置 LLM 时引导设置并保留选区（FEAT-004 REQ-005）；
+  /// 返回 true 表示已配置可继续触发
+  Future<bool> _ensureLlmConfigured() async {
+    if (_llmConfigured) return true;
+    await LlmSettingsDialog.show(context, widget.bridge);
+    await _refreshLlmConfigured();
+    return _llmConfigured;
+  }
+
+  Future<void> _triggerCompanion(String paragraphId, String text, CognitiveTemplateType template) async {
+    // 未配置 LLM：打开设置引导，保留选区等待配置完成后重试
+    if (!await _ensureLlmConfigured()) return;
+    if (!mounted) return;
+
+    final generation = ++_companionGeneration;
     final bookIdAtStart = _currentBookId;
-    bool stale() => !mounted || session != _companionSession || _currentBookId != bookIdAtStart;
+    bool stale() => !mounted || generation != _companionGeneration || _currentBookId != bookIdAtStart;
 
     setState(() {
       _selectionPosition = null;
       _activeTemplate = template;
-      _activeAnalysisText = '正在调用底层认知计算引擎深度解析中...';
     });
     _focusController.focusParagraph(paragraphId, selectedText: text);
     _focusController.setCompanionDrawerOpen(true);
+    _companionSession.resetWithAnalysis('正在调用底层认知计算引擎深度解析中...');
 
-    // 流式伴读（task_17 D4）：start 拿 request_id，260ms 轮询渐进渲染，done 落终态
+    // 流式伴读：start 拿 request_id + thread_id，轮询渐进渲染，done 落终态
     final startRes = await widget.bridge.invoke('ai.companion_start', {
       'book_id': bookIdAtStart,
       'template_type': template.templateKey,
@@ -371,6 +524,10 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     });
     if (stale()) return;
     final requestId = startRes.data['request_id']?.toString() ?? '';
+    final threadId = startRes.data['thread_id']?.toString();
+    if (threadId != null && threadId.isNotEmpty) {
+      _companionSession.setThreadId(threadId);
+    }
 
     var finalText = '解析完成';
     if (requestId.isNotEmpty) {
@@ -382,8 +539,13 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         if (stale()) return;
         final partial = (poll.data['partial'] ?? '') as String;
         final done = poll.data['done'] == true;
+        // TTFT（FEAT-005 REQ-002）：首帧到达即定格，头部展示不再变化
+        if (_companionSession.ttftMs == null) {
+          final ttft = (poll.data['ttft_ms'] as num?)?.toInt();
+          if (ttft != null) _companionSession.setTtft(ttft);
+        }
         if (mounted && partial.isNotEmpty) {
-          setState(() => _activeAnalysisText = partial);
+          _companionSession.updateLastAiMessage(partial);
         }
         if (done) {
           finalText = partial;
@@ -402,12 +564,63 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
       finalText = (res.data['response'] ?? res.data['analysis'] ?? '解析完成') as String;
     }
 
-    if (mounted) {
+    if (mounted && !stale()) {
       setState(() {
-        _activeAnalysisText = finalText;
         _companionOffline = finalText.startsWith('【离线模式】');
       });
+      _companionSession.updateLastAiMessage(finalText);
     }
+  }
+
+  /// 原位追问（FEAT-005 REQ-003）：沿用同线程上下文 + 流式增量渲染。
+  /// onPartial 在每个 poll 增量到达时回调，抽屉内进行中的 AI 条目逐段生长。
+  Future<String> _askFollowUp(String question, void Function(String partial) onPartial) async {
+    final text = _focusController.selectedText ?? _selectedTextCache ?? '';
+    final threadId = _companionSession.threadId;
+
+    final startRes = await widget.bridge.invoke('ai.companion_start', {
+      'book_id': _currentBookId,
+      'template_type': _activeTemplate.templateKey,
+      'selected_text': text,
+      'prompt': question,
+      if (threadId != null) 'thread_id': threadId,
+    });
+    final requestId = startRes.data['request_id']?.toString() ?? '';
+    final newThread = startRes.data['thread_id']?.toString();
+    if (newThread != null && newThread.isNotEmpty) {
+      _companionSession.setThreadId(newThread);
+    }
+
+    var finalText = '追问分析完成';
+    if (requestId.isNotEmpty) {
+      for (var i = 0; i < 900; i++) {
+        final poll = await widget.bridge.invoke('ai.companion_poll', {
+          'request_id': requestId,
+        });
+        final partial = (poll.data['partial'] ?? '') as String;
+        final done = poll.data['done'] == true;
+        if (partial.isNotEmpty) onPartial(partial);
+        if (done) {
+          finalText = partial;
+          break;
+        }
+        await Future.delayed(const Duration(milliseconds: 260));
+      }
+    } else {
+      final res = await widget.bridge.invoke('ai.companion_ask', {
+        'book_id': _currentBookId,
+        'template_type': _activeTemplate.templateKey,
+        'selected_text': text,
+        'prompt': question,
+      });
+      finalText = (res.data['analysis'] ?? res.data['response'] ?? '追问分析完成') as String;
+      onPartial(finalText);
+    }
+
+    if (mounted) {
+      setState(() => _companionOffline = finalText.startsWith('【离线模式】'));
+    }
+    return finalText;
   }
 
   /// 应用任意标注样式到当前选区（task_13）：持久化 + 内联渲染
@@ -458,9 +671,6 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     });
     // 反馈即所见：标注内联渲染 + 面板收起已是确认（验收：不弹底部提示条）
   }
-
-  /// 高亮 = 默认琥珀色的直通快路径（胶囊「高亮」按钮，不经面板）
-  Future<void> _handleHighlight() => _applyAnnotation(AnnotationStyle.highlight, _defaultHighlightHex);
 
   /// 保存人工批注（task_13 D4 / task_16 D2）：_editingAnnotationId 非空走更新，否则新建
   Future<void> _saveNote(String text) async {
@@ -538,36 +748,112 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     });
   }
 
-  /// 导图节点联动章节跳转（task_16 D3）：关目录 + 设活跃章节 + 动画滚动到该章节首段
+  /// 导图/目录节点联动章节跳转（task_16 D3）：关目录 + 设活跃章节 + 动画滚动到该章节首段
   void _jumpToSection(int sectionId) {
     setState(() {
       _activeSectionId = sectionId;
       _isTocOpen = false;
     });
-    final index = _paragraphs.indexWhere((p) => p['section_id'] == sectionId);
-    if (index < 0) return;
-    final firstParaId = _paragraphs[index]['id'] as String;
+    final renderIndex = _renderItems.indexWhere(
+        (item) => item['kind'] == 'para' && item['section_id'] == sectionId);
+    if (renderIndex < 0) return;
+    final firstParaId = _renderItems[renderIndex]['id'] as String;
+    _scrollToParagraph(firstParaId);
+  }
 
-    // 精确路径：目标段已构建（RenderBox 可用）则用全局坐标换算滚动位置
-    final ctx = _paraKeys[firstParaId]?.currentContext;
+  /// 滚动到指定段落：精确路径（RenderBox 全局坐标）优先，懒构建未命中的
+  /// 远端段落按渲染清单索引比例估算兜底
+  void _scrollToParagraph(String pId, {bool animate = true}) {
+    // 段落在渲染清单中的位置（含 header 项），保证估算比例与 ListView 索引一致
+    final renderIndex = _renderItems
+        .indexWhere((item) => item['kind'] == 'para' && item['id'] == pId);
+    final ctx = _paraKeys[pId]?.currentContext;
     if (ctx != null) {
       final ro = ctx.findRenderObject();
       if (ro is RenderBox && ro.hasSize) {
         final itemTop = ro.localToGlobal(Offset.zero).dy;
         final target = (_scrollController.offset + itemTop - 96.0)
             .clamp(0.0, _scrollController.position.maxScrollExtent);
-        _scrollController.animateTo(target,
-            duration: const Duration(milliseconds: 340),
-            curve: Curves.easeOutCubic);
+        if (animate) {
+          _scrollController.animateTo(target,
+              duration: const Duration(milliseconds: 340),
+              curve: Curves.easeOutCubic);
+        } else {
+          _scrollController.jumpTo(target);
+        }
         return;
       }
     }
-    // 兜底路径：懒构建未命中的远端段落按索引比例估算
-    final estimated = (index / (_paragraphs.length + 1)) *
+    if (renderIndex < 0) return;
+    final estimated = (renderIndex / (_renderItems.length + 1)) *
         _scrollController.position.maxScrollExtent;
-    _scrollController.animateTo(estimated,
-        duration: const Duration(milliseconds: 340),
-        curve: Curves.easeOutCubic);
+    if (animate) {
+      _scrollController.animateTo(estimated,
+          duration: const Duration(milliseconds: 340),
+          curve: Curves.easeOutCubic);
+    } else {
+      _scrollController.jumpTo(estimated);
+    }
+    // 远端段落尚未构建：动画后按已构建状态再精确校准一次
+    Future.delayed(const Duration(milliseconds: 380), () {
+      if (!mounted) return;
+      final lateCtx = _paraKeys[pId]?.currentContext;
+      final ro = lateCtx?.findRenderObject();
+      if (ro is RenderBox && ro.hasSize) {
+        final itemTop = ro.localToGlobal(Offset.zero).dy;
+        final target = (_scrollController.offset + itemTop - 96.0)
+            .clamp(0.0, _scrollController.position.maxScrollExtent);
+        _scrollController.animateTo(target,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic);
+      }
+    });
+  }
+
+  /// 词云点击定位（FEAT-009 REQ-003）：跳到首个包含关键词的段落并短暂强调
+  void _locateKeyword(String keyword) {
+    final idx = _paragraphs.indexWhere((p) =>
+        (p['text'] as String).contains(keyword));
+    if (idx < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('正文中未找到「$keyword」'),
+          duration: const Duration(milliseconds: 1200),
+        ),
+      );
+      return;
+    }
+    final pId = _paragraphs[idx]['id'] as String;
+    setState(() => _isTocOpen = false);
+    _scrollToParagraph(pId);
+    _flashTimer?.cancel();
+    setState(() => _flashParagraphId = pId);
+    _flashTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() => _flashParagraphId = null);
+    });
+  }
+
+  /// 标注管理器定位跳转（FEAT-007 REQ-004）：回正文锚点段落并短暂强调
+  void _locateAnnotation(AnnotationItem a) {
+    setState(() => _isAnnotationManagerOpen = false);
+    _scrollToParagraph(a.paragraphId);
+    _flashTimer?.cancel();
+    setState(() => _flashParagraphId = a.paragraphId);
+    _flashTimer = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() => _flashParagraphId = null);
+    });
+  }
+
+  /// FNV-1a 32 位哈希（幂等归档键）：对 note+段落 稳定去重
+  String _fnv1a(String input) {
+    var hash = 0x811c9dc5;
+    for (final code in input.codeUnits) {
+      hash ^= code & 0xff;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+      hash ^= (code >> 8) & 0xff;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 
   /// 删除标注（task_13 D5）
@@ -602,7 +888,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
       return '作用域：选区「${t.length > 12 ? '${t.substring(0, 12)}…' : t}」';
     }
     if (_focusController.activeParagraphId != null) return '作用域：当前聚焦段落';
-    return '作用域：全文首段';
+    return '作用域：将对全文首段执行';
   }
 
   /// AI 键盘模板触发：作用域解析后走既有伴读链路（task_14 D3）
@@ -723,6 +1009,53 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
     return found;
   }
 
+  /// 文档加载失败视图：显式错误 + 重试（此前静默空白页）
+  Widget _buildLoadErrorView(Color borderColor, Color textSecondary) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, size: 40.0, color: textSecondary.withValues(alpha: 0.6)),
+          const SizedBox(height: 12.0),
+          Text(
+            '文档加载失败：$_docLoadError',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13.0, color: textSecondary, height: 1.5),
+          ),
+          const SizedBox(height: 16.0),
+          TextButton.icon(
+            onPressed: () => _loadDocumentData(_currentBookId),
+            icon: const Icon(Icons.refresh, size: 16.0),
+            label: const Text('重新加载', style: TextStyle(fontSize: 13.0)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 长文加载骨架屏（FEAT-002 REQ-004）：三行渐隐占位，避免白屏突兀
+  Widget _buildSkeletonView(Color textSecondary) {
+    final lineColor = textSecondary.withValues(alpha: 0.14);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(width: 220.0, height: 26.0, decoration: BoxDecoration(color: lineColor, borderRadius: BorderRadius.circular(4.0))),
+          const SizedBox(height: 26.0),
+          for (final w in <double>[640.0, 600.0, 620.0, 320.0]) ...[
+            Container(
+              width: w,
+              height: 14.0,
+              margin: const EdgeInsets.only(bottom: 12.0),
+              decoration: BoxDecoration(color: lineColor, borderRadius: BorderRadius.circular(4.0)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -752,6 +1085,10 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
         LogicalKeySet(LogicalKeyboardKey.escape): const _ExitFocusIntent(),
         LogicalKeySet(LogicalKeyboardKey.keyJ): const _NextParagraphIntent(),
         LogicalKeySet(LogicalKeyboardKey.keyK): const _PrevParagraphIntent(),
+        LogicalKeySet(LogicalKeyboardKey.digit1): const _AiKeyboardDigitIntent(0),
+        LogicalKeySet(LogicalKeyboardKey.digit2): const _AiKeyboardDigitIntent(1),
+        LogicalKeySet(LogicalKeyboardKey.digit3): const _AiKeyboardDigitIntent(2),
+        LogicalKeySet(LogicalKeyboardKey.digit4): const _AiKeyboardDigitIntent(3),
       },
       child: Actions(
         actions: <Type, Action<Intent>>{
@@ -800,6 +1137,18 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
               return null;
             },
           ),
+          _AiKeyboardDigitIntent: CallbackAction<_AiKeyboardDigitIntent>(
+            onInvoke: (intent) {
+              // AI 键盘开启时数字键 1-4 直触对应认知模板（FEAT-010 REQ-003）
+              if (!_isAiKeyboardOpen) return null;
+              final templates = CognitiveTemplateType.values.toList();
+              final i = intent.index;
+              if (i >= 0 && i < templates.length) {
+                _runAiKeyboardTemplate(templates[i]);
+              }
+              return null;
+            },
+          ),
           _PrevParagraphIntent: CallbackAction<_PrevParagraphIntent>(
             onInvoke: (_) {
               _focusPrevParagraph();
@@ -816,6 +1165,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                 backgroundColor: canvasBg,
                 body: MouseRegion(
                   onHover: (e) {
+                    // 指针在阅读区内移动即视为交互：重置 3s 空闲隐退计时，
+                    // 避免"悬停唤出顶栏后静止 3s 内被旧计时器再次藏起"的抖动
+                    _resetHeaderIdleTimer();
                     // 仅当指针明确向上移动接近顶缘时才唤出顶栏：
                     // 纯位置接近（dy<48）会与「下滚隐退」互相触发——阅读时指针停在顶栏附近，
                     // 每次滚轮下滚隐退后，指针微动又唤出，顶栏与正文反复跳变形成持续抖动。
@@ -967,10 +1319,14 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                         onPointerDown: (e) => _lastPointerGlobal = e.position,
                                         onPointerMove: (e) => _lastPointerGlobal = e.position,
                                         onPointerUp: (e) => _lastPointerGlobal = e.position,
-                                        child: ListView.builder(
+                                        child: _docLoadError != null
+                                            ? _buildLoadErrorView(borderColor, textSecondary)
+                                            : _renderItems.isEmpty
+                                                ? _buildSkeletonView(textSecondary)
+                                                : ListView.builder(
                                         controller: _scrollController,
                                         padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 56.0),
-                                        itemCount: _paragraphs.length + 1,
+                                        itemCount: _renderItems.length + 1,
                                         itemBuilder: (context, index) {
                                           if (index == 0) {
                                             return Padding(
@@ -989,7 +1345,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                   ),
                                                   const SizedBox(height: 12.0),
                                                   Text(
-                                                    '极简主义排版 · iA Writer Typography · 纯净阅读心流',
+                                                    '${_tocSections.length} 个章节 · ${_paragraphs.length} 个段落'
+                                                    '${_currentBookTitle.isEmpty ? '' : ' · 本地优先离线阅读'}',
                                                     style: TextStyle(
                                                       fontSize: 13.0,
                                                       color: textSecondary,
@@ -1003,13 +1360,41 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             );
                                           }
 
-                                          final p = _paragraphs[index - 1];
-                                          final pId = p['id'] as String;
-                                          final text = p['text'] as String;
+                                          final item = _renderItems[index - 1];
+                                          if (item['kind'] == 'header') {
+                                            // 章节标题行内联（FEAT-002 REQ-003）：层级驱动视觉重量
+                                            final level = (item['level'] as num?)?.toInt() ?? 1;
+                                            final title = item['title'] as String;
+                                            return Padding(
+                                              padding: EdgeInsets.only(
+                                                top: 28.0,
+                                                bottom: ReaderTheme.paragraphSpacing,
+                                                left: level <= 1 ? 0.0 : 0.0,
+                                              ),
+                                              child: Text(
+                                                title,
+                                                style: TextStyle(
+                                                  fontSize: level <= 1
+                                                      ? 23.0
+                                                      : level == 2
+                                                          ? 19.5
+                                                          : 17.0,
+                                                  fontWeight: FontWeight.w600,
+                                                  height: 1.35,
+                                                  letterSpacing: -0.3,
+                                                ),
+                                              ),
+                                            );
+                                          }
+
+                                          final pId = item['id'] as String;
+                                          final text = item['text'] as String;
                                           final paraKey = _paraKeys.putIfAbsent(
                                               pId, () => GlobalKey(debugLabel: 'para_$pId'));
                                           final opacity = _focusController.getParagraphOpacity(pId);
-                                          // 选区级内联标注（task_13）：全部内容样式按区间渲染
+                                          // 行内 Markdown（FEAT-002 REQ-002）⊕ 选区级内联标注（task_13）
+                                          // ——同一纯文本坐标系合成，批注偏移不因语义标记漂移
+                                          final markdown = _paraMarkdown[pId] ?? InlineMarkdown.parse(text);
                                           final paragraphRanges = _annotations
                                               .where((a) =>
                                                   a.paragraphId == pId && a.hasRange && !a.isNote)
@@ -1020,16 +1405,18 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                                     color: annotationColorFromHex(a.colorHex),
                                                   ))
                                               .toList();
-                                          final paragraphSpan = AnnotationSpanBuilder.build(
-                                            text: text,
+                                          final paragraphSpan = InlineMarkdown.buildParagraphSpan(
+                                            markdown: markdown,
                                             ranges: paragraphRanges,
                                             baseStyle: Theme.of(context).textTheme.bodyLarge,
+                                            isDark: isDark,
                                           );
                                           final notes = _annotations
                                               .where((a) =>
                                                   a.paragraphId == pId &&
                                                   (a.noteText?.isNotEmpty ?? false))
                                               .toList();
+                                          final isFlash = _flashParagraphId == pId;
 
                                           return AnimatedOpacity(
                                             duration: ReaderTheme.focusTransitionDuration,
@@ -1037,6 +1424,12 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                             child: Container(
                                               key: paraKey,
                                               margin: const EdgeInsets.only(bottom: ReaderTheme.paragraphSpacing),
+                                              decoration: BoxDecoration(
+                                                color: isFlash
+                                                    ? accentColor.withValues(alpha: 0.10)
+                                                    : Colors.transparent,
+                                                borderRadius: BorderRadius.circular(6.0),
+                                              ),
                                               child: Column(
                                                 crossAxisAlignment: CrossAxisAlignment.start,
                                                 children: [
@@ -1130,33 +1523,16 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                 activeSectionId: _activeSectionId,
                                 onClose: () => setState(() => _isTocOpen = false),
                                 onSectionSelected: (sec) {
-                                  setState(() => _activeSectionId = sec.id);
+                                  // 目录点击 → 平滑滚动至锚点（FEAT-002 REQ-003）
+                                  _jumpToSection(sec.id);
                                 },
                                 onKeywordSelected: (kw) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('已锚定核心概念：#$kw'), duration: const Duration(milliseconds: 1200)),
-                                  );
+                                  // 词云点击 → 定位到首个包含该词的段落并强调（FEAT-009 REQ-003）
+                                  _locateKeyword(kw);
                                 },
                                 onNodeSelected: (label, sectionId) {
                                   if (sectionId != null) {
                                     _jumpToSection(sectionId);
-                                    final sectionTitle = _tocSections
-                                        .where((s) => s.id == sectionId)
-                                        .map((s) => s.title)
-                                        .firstOrNull;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('已跳转章节：${sectionTitle ?? sectionId}'),
-                                        duration: const Duration(milliseconds: 1200),
-                                      ),
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('已定位知识节点：$label'),
-                                        duration: const Duration(milliseconds: 1200),
-                                      ),
-                                    );
                                   }
                                 },
                               ),
@@ -1177,9 +1553,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                             child: SizedBox(
                               height: 560.0,
                               child: CompanionDrawer(
-                                selectedText: _focusController.selectedText ?? _selectedTextCache ?? '',
+                                session: _companionSession,
                                 currentTemplate: _activeTemplate,
-                                initialAnalysis: _activeAnalysisText,
                                 offlineMode: _companionOffline,
                                 onOpenSettings: () => LlmSettingsDialog.show(context, widget.bridge),
                                 onClose: () {
@@ -1192,6 +1567,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     (p) => p['id'] == targetPid,
                                     orElse: () => {'section_id': _activeSectionId},
                                   );
+                                  // AI 沉淀边注（FEAT-007 REQ-003）：origin=companion +
+                                  // 内容哈希幂等键，重复"存为边注"定位既有行而非重复插入
                                   final res = await widget.bridge.invoke('annotation.save', {
                                     'book_id': _currentBookId,
                                     'section_id': (para['section_id'] as int?) ?? _activeSectionId,
@@ -1199,13 +1576,15 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     'style': 'margin_note',
                                     'note_text': note,
                                     'color': '#007AFF',
+                                    'origin': 'companion',
+                                    'idem_key': 'ai_${_currentBookId}_${targetPid}_${_fnv1a(note)}',
                                   });
                                   if (!mounted) return;
                                   setState(() {
                                     _annotations.add(AnnotationItem(
                                       id: res.data['annotation_id']?.toString() ?? '',
                                       bookId: _currentBookId,
-                                      sectionId: _activeSectionId,
+                                      sectionId: (para['section_id'] as int?) ?? _activeSectionId,
                                       paragraphId: targetPid,
                                       style: AnnotationStyle.marginNote,
                                       colorHex: '#007AFF',
@@ -1213,20 +1592,8 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                     ));
                                   });
                                 },
-                                onAskFollowUp: (q) async {
-                                  final res = await widget.bridge.invoke('ai.companion_ask', {
-                                    'book_id': _currentBookId,
-                                    'template_type': _activeTemplate.templateKey,
-                                    'selected_text': _focusController.selectedText ?? '',
-                                    'prompt': q,
-                                  });
-                                  final answer =
-                                      (res.data['analysis'] ?? res.data['response'] ?? '追问分析完成') as String;
-                                  if (mounted) {
-                                    setState(() => _companionOffline = answer.startsWith('【离线模式】'));
-                                  }
-                                  return answer;
-                                },
+                                onAskFollowUp: (q, onPartial) =>
+                                    _askFollowUp(q, onPartial),
                               ),
                             ),
                           ),
@@ -1256,13 +1623,9 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                 });
                               },
                               onTemplateSelected: (tpl) {
-                                if (tpl == CognitiveTemplateType.highlight) {
-                                  _handleHighlight();
-                                } else {
-                                  final text = _selectedTextCache ?? '';
-                                  final pId = _selectedParagraphIdCache ?? 'p1';
-                                  _triggerCompanion(pId, text, tpl);
-                                }
+                                final text = _selectedTextCache ?? '';
+                                final pId = _selectedParagraphIdCache ?? 'p1';
+                                _triggerCompanion(pId, text, tpl);
                               },
                             ),
                           ),
@@ -1319,6 +1682,7 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                                   _editingAnnotationId = id;
                                   _isNoteEditorOpen = true;
                                 }),
+                                onLocate: (entry) => _locateAnnotation(entry.item),
                                 onClose: () =>
                                     setState(() => _isAnnotationManagerOpen = false),
                               ),
@@ -1353,13 +1717,19 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                           ),
                         ),
 
-                      // 独立 AI 键盘（task_14）：底部停靠浮层
+                      // 独立 AI 键盘（task_14）：底部停靠浮层；外点关闭（FEAT-010 REQ-003）
                       if (isDesktop && _isAiKeyboardOpen)
                         Positioned(
                           bottom: 28.0,
                           left: 0,
                           right: 0,
-                          child: Center(
+                          child: TapRegion(
+                            onTapOutside: (_) {
+                              if (_isAiKeyboardOpen) {
+                                setState(() => _isAiKeyboardOpen = false);
+                              }
+                            },
+                            child: Center(
                             child: AiKeyboardPanel(
                               targetHint: _aiTargetHint,
                               onTemplateSelected: _runAiKeyboardTemplate,
@@ -1370,43 +1740,55 @@ class _ReaderWorkbenchScreenState extends State<ReaderWorkbenchScreen> {
                               onClose: () => setState(() => _isAiKeyboardOpen = false),
                             ),
                           ),
+                          ),
                         ),
 
                       // 移动端伴读 Bottom Sheet (DESIGN.md §5: 半屏拖拽滑层)
                       if (!isDesktop && _focusController.isCompanionDrawerOpen)
-                        MobileCompanionSheet(
-                          currentTemplate: _activeTemplate,
-                          analysisContent: _activeAnalysisText,
-                          onDismiss: () {
-                            _focusController.setCompanionDrawerOpen(false);
-                            _focusController.exitFocusMode();
-                          },
-                          onSaveAnnotation: () async {
-                            final targetPid = _focusController.activeParagraphId ?? 'p1';
-                            final para = _paragraphs.firstWhere(
-                              (p) => p['id'] == targetPid,
-                              orElse: () => {'section_id': _activeSectionId},
+                        AnimatedBuilder(
+                          animation: _companionSession,
+                          builder: (context, _) {
+                            final lastAi = _companionSession.dialogues
+                                .lastWhere((d) => d.role == 'ai',
+                                    orElse: () => const CompanionDialogueItem(role: 'ai', content: ''));
+                            return MobileCompanionSheet(
+                              currentTemplate: _activeTemplate,
+                              analysisContent: lastAi.content,
+                              onDismiss: () {
+                                _focusController.setCompanionDrawerOpen(false);
+                                _focusController.exitFocusMode();
+                              },
+                              onSaveAnnotation: () async {
+                                final targetPid = _focusController.activeParagraphId ?? 'p1';
+                                final para = _paragraphs.firstWhere(
+                                  (p) => p['id'] == targetPid,
+                                  orElse: () => {'section_id': _activeSectionId},
+                                );
+                                final note = lastAi.content;
+                                final res = await widget.bridge.invoke('annotation.save', {
+                                  'book_id': _currentBookId,
+                                  'section_id': (para['section_id'] as int?) ?? _activeSectionId,
+                                  'paragraph_id': targetPid,
+                                  'style': 'margin_note',
+                                  'note_text': note,
+                                  'color': '#007AFF',
+                                  'origin': 'companion',
+                                  'idem_key': 'ai_${_currentBookId}_${targetPid}_${_fnv1a(note)}',
+                                });
+                                if (!mounted) return;
+                                setState(() {
+                                  _annotations.add(AnnotationItem(
+                                    id: res.data['annotation_id']?.toString() ?? '',
+                                    bookId: _currentBookId,
+                                    sectionId: (para['section_id'] as int?) ?? _activeSectionId,
+                                    paragraphId: targetPid,
+                                    style: AnnotationStyle.marginNote,
+                                    colorHex: '#007AFF',
+                                    noteText: note,
+                                  ));
+                                });
+                              },
                             );
-                            final res = await widget.bridge.invoke('annotation.save', {
-                              'book_id': _currentBookId,
-                              'section_id': (para['section_id'] as int?) ?? _activeSectionId,
-                              'paragraph_id': targetPid,
-                              'style': 'margin_note',
-                              'note_text': _activeAnalysisText,
-                              'color': '#007AFF',
-                            });
-                            if (!mounted) return;
-                            setState(() {
-                              _annotations.add(AnnotationItem(
-                                id: res.data['annotation_id']?.toString() ?? '',
-                                bookId: _currentBookId,
-                                sectionId: _activeSectionId,
-                                paragraphId: targetPid,
-                                style: AnnotationStyle.marginNote,
-                                colorHex: '#007AFF',
-                                noteText: _activeAnalysisText,
-                              ));
-                            });
                           },
                         ),
                     ],
@@ -1443,4 +1825,9 @@ class _NextParagraphIntent extends Intent {
 
 class _PrevParagraphIntent extends Intent {
   const _PrevParagraphIntent();
+}
+
+class _AiKeyboardDigitIntent extends Intent {
+  final int index;
+  const _AiKeyboardDigitIntent(this.index);
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../core/theme/reader_theme.dart';
 import '../../../core/ffi/reader_engine_bridge.dart';
@@ -14,6 +15,8 @@ class LibraryBookItem {
   final String format;
   final int totalPages;
   final int sectionsCount;
+  /// 阅读进度（0~1）：>0 时书架行展示百分比（FEAT-001 REQ-005）
+  final double readProgress;
 
   const LibraryBookItem({
     required this.id,
@@ -22,6 +25,7 @@ class LibraryBookItem {
     required this.format,
     required this.totalPages,
     required this.sectionsCount,
+    this.readProgress = 0.0,
   });
 
   factory LibraryBookItem.fromJson(Map<String, dynamic> json) {
@@ -32,6 +36,7 @@ class LibraryBookItem {
       format: (json['format'] as String? ?? 'md').toUpperCase(),
       totalPages: json['total_pages'] as int? ?? 1,
       sectionsCount: json['sections_count'] as int? ?? 1,
+      readProgress: (json['read_progress'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -115,50 +120,118 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  /// 导入对话框（FEAT-001 REQ-001）：文件选择器为主入口，手输路径保留为兜底；
+  /// 同内容重复导入走幂等定位——直接打开既有书目而非报错拦截
   void _showImportFileDialog() {
-    final controller = TextEditingController(text: '/path/to/sample_technical_doc.md');
+    final controller = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     showDialog(
       context: context,
       builder: (ctx) {
-        return AlertDialog(
-          title: const Text('导入本地文档 (MD / TXT)', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold)),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              labelText: '输入文档绝对路径',
-              hintText: '如: /home/user/Documents/notes.md',
+        return StatefulBuilder(builder: (ctx, setDialogState) {
+          return AlertDialog(
+            title: const Text('导入本地文档 (MD / TXT)',
+                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '支持 Markdown 与纯文本；同内容文档重复导入会自动定位到书库中的既有条目。',
+                  style: TextStyle(
+                      fontSize: 12.0,
+                      height: 1.5,
+                      color: isDark ? Colors.white54 : Colors.black45),
+                ),
+                const SizedBox(height: 14.0),
+                Row(
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('import_pick_file'),
+                      onPressed: () async {
+                        final files = await FilePicker.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: const ['md', 'markdown', 'txt'],
+                        );
+                        final path = files.firstOrNull?.path;
+                        if (path != null) {
+                          setDialogState(() => controller.text = path);
+                        }
+                      },
+                      icon: const Icon(Icons.file_open_outlined, size: 17.0),
+                      label: const Text('选择文件',
+                          style: TextStyle(fontSize: 13.0)),
+                    ),
+                    const SizedBox(width: 10.0),
+                    Expanded(
+                      child: Text(
+                        'MD / TXT',
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            color: isDark ? Colors.white38 : Colors.black38),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12.0),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: '或输入文档绝对路径',
+                    hintText: '如: /home/user/Documents/notes.md',
+                    isDense: true,
+                  ),
+                ),
+              ],
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final path = controller.text.trim();
-                Navigator.of(ctx).pop();
-                if (path.isNotEmpty) {
-                  final res = await widget.bridge.invoke('book.parse', {'file_path': path});
-                  if (res.isSuccess) {
-                    final bookId = res.data['book_id'] ?? res.data['id'] ?? 1;
-                    widget.onOpenBook(bookId);
-                  } else {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('解析失败: ${res.message}')),
-                      );
-                    }
-                  }
-                }
-              },
-              child: const Text('导入并阅读'),
-            ),
-          ],
-        );
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('取消'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final path = controller.text.trim();
+                  if (path.isEmpty) return;
+                  Navigator.of(ctx).pop();
+                  await _importDocument(path);
+                },
+                child: const Text('导入并阅读'),
+              ),
+            ],
+          );
+        });
       },
     );
+  }
+
+  Future<void> _importDocument(String path) async {
+    final res = await widget.bridge.invoke('book.parse', {'file_path': path});
+    if (!mounted) return;
+    if (res.isSuccess) {
+      final duplicate = res.data['duplicate'] == true;
+      final bookId = (res.data['id'] as num?)?.toInt() ?? 1;
+      if (duplicate) {
+        // 幂等定位：重复导入不是错误，直接给"打开"入口
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('该书已在书库中，已为你定位'),
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: '打开',
+              onPressed: () => widget.onOpenBook(bookId),
+            ),
+          ),
+        );
+      } else {
+        widget.onOpenBook(bookId);
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('解析失败: ${res.message}')),
+      );
+    }
   }
 
   /// 运行时未接入真实引擎（mock 通道）时向用户明示，避免把内置演示数据当真；
@@ -187,7 +260,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       backgroundColor: canvasBg,
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 860.0),
+          constraints: const BoxConstraints(maxWidth: 1120.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -386,7 +459,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                             ),
                                             const SizedBox(height: 4.0),
                                             Text(
-                                              '作者: ${book.author} · ${book.sectionsCount} 个章节',
+                                              '作者: ${book.author} · ${book.sectionsCount} 个章节'
+                                              '${book.readProgress > 0 ? ' · 已读 ${(book.readProgress * 100).toStringAsFixed(0)}%' : ''}',
                                               style: TextStyle(
                                                 fontSize: 12.5,
                                                 color: textSecondary,

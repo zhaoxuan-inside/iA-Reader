@@ -35,7 +35,7 @@ void main() {
   });
 
   group('FloatingActionPill Widget Tests', () {
-    testWidgets('Renders all 5 cognitive & highlight buttons', (tester) async {
+    testWidgets('Renders all 4 cognitive template buttons', (tester) async {
       CognitiveTemplateType? selected;
       await tester.pumpWidget(
         MaterialApp(
@@ -51,7 +51,7 @@ void main() {
       expect(find.text('逻辑'), findsOneWidget);
       expect(find.text('批判'), findsOneWidget);
       expect(find.text('术语'), findsOneWidget);
-      expect(find.text('高亮'), findsOneWidget);
+      expect(find.text('高亮'), findsNothing);
 
       await tester.tap(find.text('逻辑'));
       expect(selected, CognitiveTemplateType.logic);

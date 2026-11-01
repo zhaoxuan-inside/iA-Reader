@@ -35,13 +35,13 @@ class MobileCompanionSheet extends StatelessWidget {
           decoration: BoxDecoration(
             color: surfaceColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20.0)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: isDark ? 0.5 : 0.12),
-                blurRadius: 16.0,
-                offset: const Offset(0, -4),
+            // DESIGN.md 红线：无装饰性阴影——半屏滑层以 1px 发丝描边区分层级
+            border: Border(
+              top: BorderSide(
+                color: isDark ? const Color(0xFF2E2E30) : const Color(0xFFE4E4E7),
+                width: 0.8,
               ),
-            ],
+            ),
           ),
           child: Column(
             children: [

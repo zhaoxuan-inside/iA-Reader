@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
+
 import '../../../core/theme/reader_theme.dart';
 import '../../selection_pill/presentation/floating_action_pill.dart';
-
-/// 伴读对话条目数据结构
-class CompanionDialogueItem {
-  final String role; // 'user' 或 'ai'
-  final String content;
-
-  CompanionDialogueItem({required this.role, required this.content});
-}
+import '../domain/companion_session.dart';
 
 /// 认知伴读抽屉 (CompanionDrawer)
-/// 严格对标 DESIGN.md：380px 定宽、无干扰边框、卡片内原位追问与持久化边注归档
+/// 严格对标 DESIGN.md：380px 定宽、无干扰边框、卡片内原位追问与持久化边注归档。
+///
+/// 对话状态外置于 [CompanionSession]（生命周期跟随阅读工作台）：
+/// 关闭抽屉重开不丢上下文；流式渲染以 poll 增量刷新进行中的 AI 条目。
 class CompanionDrawer extends StatefulWidget {
-  final String selectedText;
+  final CompanionSession session;
   final CognitiveTemplateType currentTemplate;
-  final String initialAnalysis;
   final VoidCallback onClose;
   final Future<void> Function(String noteContent) onSaveAnnotation;
-  final Future<String> Function(String followUpQuestion) onAskFollowUp;
+
+  /// 原位追问：onPartial 在每个流式增量到达时回调（FEAT-005 真流式），
+  /// 返回值为最终完整回复
+  final Future<String> Function(String question, void Function(String partial) onPartial) onAskFollowUp;
 
   /// 最近一次伴读响应是否为离线降级卡片（响应前缀【离线模式】）
   final bool offlineMode;
@@ -28,9 +27,8 @@ class CompanionDrawer extends StatefulWidget {
 
   const CompanionDrawer({
     super.key,
-    required this.selectedText,
+    required this.session,
     required this.currentTemplate,
-    required this.initialAnalysis,
     required this.onClose,
     required this.onSaveAnnotation,
     required this.onAskFollowUp,
@@ -43,53 +41,43 @@ class CompanionDrawer extends StatefulWidget {
 }
 
 class _CompanionDrawerState extends State<CompanionDrawer> {
-  final List<CompanionDialogueItem> _dialogues = [];
   final TextEditingController _inputController = TextEditingController();
   bool _isSaving = false;
-  bool _isResponding = false;
 
   @override
   void initState() {
     super.initState();
-    _dialogues.add(CompanionDialogueItem(
-      role: 'ai',
-      content: widget.initialAnalysis,
-    ));
-  }
-
-  @override
-  void didUpdateWidget(covariant CompanionDrawer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialAnalysis != widget.initialAnalysis ||
-        oldWidget.selectedText != widget.selectedText) {
-      _dialogues.clear();
-      _dialogues.add(CompanionDialogueItem(
-        role: 'ai',
-        content: widget.initialAnalysis,
-      ));
+    // 首次打开且会话为空：以当前分析文本播种首条 AI 条目
+    if (widget.session.dialogues.isEmpty) {
+      widget.session.resetWithAnalysis('');
     }
   }
 
   Future<void> _handleSendFollowUp() async {
     final text = _inputController.text.trim();
-    if (text.isEmpty || _isResponding) return;
+    if (text.isEmpty || widget.session.isResponding) return;
 
-    setState(() {
-      _dialogues.add(CompanionDialogueItem(role: 'user', content: text));
-      _isResponding = true;
-      _inputController.clear();
-    });
+    widget.session
+      ..addUserMessage(text)
+      ..setResponding(true)
+      ..updateLastAiMessage('思考中…');
+    _inputController.clear();
 
     try {
-      final answer = await widget.onAskFollowUp(text);
+      final answer = await widget.onAskFollowUp(
+        text,
+        (partial) => widget.session.updateLastAiMessage(partial),
+      );
       if (mounted) {
-        setState(() {
-          _dialogues.add(CompanionDialogueItem(role: 'ai', content: answer));
-        });
+        widget.session.updateLastAiMessage(answer);
+      }
+    } catch (_) {
+      if (mounted) {
+        widget.session.updateLastAiMessage('追问失败，请重试。');
       }
     } finally {
       if (mounted) {
-        setState(() => _isResponding = false);
+        widget.session.setResponding(false);
       }
     }
   }
@@ -106,176 +94,209 @@ class _CompanionDrawerState extends State<CompanionDrawer> {
     final accentColor =
         isDark ? ReaderTheme.darkAccentFocus : ReaderTheme.lightAccentFocus;
 
-    // 作为毛玻璃弹窗面板内容使用（FrostedModal 提供底色与羽化边界）
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // 头部：模板标签 + 存边注 + 关闭
-        Container(
-          height: 52.0,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: borderColor, width: 1.0)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    widget.currentTemplate.label,
-                    style: TextStyle(
-                      fontSize: 14.0,
-                      fontWeight: FontWeight.w600,
-                      color: accentColor,
-                    ),
-                  ),
-                  const SizedBox(width: 8.0),
-                  Text(
-                    '认知洞察',
-                    style: TextStyle(fontSize: 12.0, color: textSecondary),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.bookmark_add_outlined,
-                        size: 20.0, color: textSecondary),
-                    tooltip: '保存为段落边注',
-                    onPressed: _isSaving
-                        ? null
-                        : () async {
-                            setState(() => _isSaving = true);
-                            await widget.onSaveAnnotation(
-                                _dialogues.map((d) => d.content).join('\n\n'));
-                            if (!mounted) return;
-                            setState(() => _isSaving = false);
-                            ScaffoldMessenger.of(this.context).showSnackBar(
-                              const SnackBar(content: Text('已持久化存为段落边注')),
-                            );
-                          },
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, size: 20.0, color: textSecondary),
-                    tooltip: '收起伴读抽屉',
-                    onPressed: widget.onClose,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+    return AnimatedBuilder(
+      animation: widget.session,
+      builder: (context, _) {
+        final ttft = widget.session.ttftMs;
+        // FEAT-005 REQ-002：头部展示 [模板 · TTFT xxxms]——首帧时延是流式体验的验收指标
+        final headerMeta = ttft != null ? '${widget.currentTemplate.label} · TTFT ${ttft}ms' : widget.currentTemplate.label;
 
-        // 离线降级提示：直达 LLM 设置
-        if (widget.offlineMode && widget.onOpenSettings != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0.0),
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 头部：模板标签 + TTFT + 存边注 + 关闭
+            Container(
+              height: 52.0,
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
               decoration: BoxDecoration(
-                color: (isDark
-                    ? const Color(0xFF27272A)
-                    : const Color(0xFFF3F4F6)),
-                borderRadius: BorderRadius.circular(8.0),
-                border: Border.all(color: borderColor, width: 1.0),
+                border: Border(bottom: BorderSide(color: borderColor, width: 1.0)),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(Icons.bolt_outlined,
-                      size: 15.0,
-                      color: isDark ? Colors.white60 : Colors.black54),
-                  const SizedBox(width: 6.0),
                   Expanded(
-                    child: Text(
-                      '当前为离线启发伴读（未配置 API Key）',
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          color: isDark ? Colors.white70 : Colors.black54),
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            headerMeta,
+                            style: TextStyle(
+                              fontSize: 14.0,
+                              fontWeight: FontWeight.w600,
+                              color: accentColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8.0),
+                        Text(
+                          '认知洞察',
+                          style: TextStyle(fontSize: 12.0, color: textSecondary),
+                        ),
+                      ],
                     ),
                   ),
-                  GestureDetector(
-                    onTap: widget.onOpenSettings,
-                    child: Text(
-                      '立即配置 →',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.primary,
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.bookmark_add_outlined,
+                            size: 20.0, color: textSecondary),
+                        tooltip: '保存为段落边注',
+                        onPressed: _isSaving
+                            ? null
+                            : () async {
+                                setState(() => _isSaving = true);
+                                await widget.onSaveAnnotation(widget.session.dialogues
+                                    .map((d) => d.content)
+                                    .join('\n\n'));
+                                if (!mounted) return;
+                                setState(() => _isSaving = false);
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  const SnackBar(content: Text('已持久化存为段落边注')),
+                                );
+                              },
                       ),
-                    ),
+                      IconButton(
+                        icon: Icon(Icons.close, size: 20.0, color: textSecondary),
+                        tooltip: '收起伴读抽屉',
+                        onPressed: widget.onClose,
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
 
-        // 对话流式卡片区
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: _dialogues.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12.0),
-            itemBuilder: (context, index) {
-              final item = _dialogues[index];
-              final isUser = item.role == 'user';
-              return Container(
-                padding: const EdgeInsets.all(12.0),
-                decoration: BoxDecoration(
-                  color: isUser
-                      ? (isDark
-                          ? const Color(0xFF27272A)
-                          : const Color(0xFFF3F4F6))
-                      : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8.0),
-                  border: isUser
-                      ? null
-                      : Border.all(color: borderColor, width: 1.0),
-                ),
-                child: Text(
-                  item.content,
-                  style: TextStyle(
-                    fontSize: 14.0,
-                    height: 1.6,
-                    color: textPrimary,
+            // 离线降级提示：直达 LLM 设置
+            if (widget.offlineMode && widget.onOpenSettings != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 0.0),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+                  decoration: BoxDecoration(
+                    color: (isDark
+                        ? const Color(0xFF27272A)
+                        : const Color(0xFFF3F4F6)),
+                    borderRadius: BorderRadius.circular(8.0),
+                    border: Border.all(color: borderColor, width: 1.0),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.bolt_outlined,
+                          size: 15.0,
+                          color: isDark ? Colors.white60 : Colors.black54),
+                      const SizedBox(width: 6.0),
+                      Expanded(
+                        child: Text(
+                          '当前为离线启发伴读（未配置 API Key）',
+                          style: TextStyle(
+                              fontSize: 11.5,
+                              color: isDark ? Colors.white70 : Colors.black54),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: widget.onOpenSettings,
+                        child: Text(
+                          '立即配置 →',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              );
-            },
-          ),
-        ),
+              ),
 
-        // 底部原位追问输入框 (In-card Follow-up Input)
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: borderColor, width: 1.0)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _inputController,
-                  onSubmitted: (_) => _handleSendFollowUp(),
-                  decoration: InputDecoration(
-                    hintText: '追问本段细节 (Enter 发送)...',
-                    hintStyle: TextStyle(fontSize: 13.0, color: textSecondary),
-                    border: InputBorder.none,
-                    isDense: true,
+            // 对话流式卡片区
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.all(16.0),
+                itemCount: widget.session.dialogues.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12.0),
+                itemBuilder: (context, index) {
+                  final item = widget.session.dialogues[index];
+                  final isUser = item.role == 'user';
+                  final isStreaming = !isUser &&
+                      widget.session.isResponding &&
+                      index == widget.session.dialogues.length - 1;
+                  return Container(
+                    padding: const EdgeInsets.all(12.0),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? (isDark
+                              ? const Color(0xFF27272A)
+                              : const Color(0xFFF3F4F6))
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8.0),
+                      border: isUser
+                          ? null
+                          : Border.all(color: borderColor, width: 1.0),
+                    ),
+                    child: isStreaming && item.content == '思考中…'
+                        ? Row(
+                            children: [
+                              SizedBox(
+                                width: 12.0,
+                                height: 12.0,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 1.6, color: accentColor),
+                              ),
+                              const SizedBox(width: 8.0),
+                              Text('正在组织回复…',
+                                  style: TextStyle(
+                                      fontSize: 13.0, color: textSecondary)),
+                            ],
+                          )
+                        : Text(
+                            item.content,
+                            style: TextStyle(
+                              fontSize: 14.0,
+                              height: 1.6,
+                              color: textPrimary,
+                            ),
+                          ),
+                  );
+                },
+              ),
+            ),
+
+            // 底部原位追问输入框 (In-card Follow-up Input)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              decoration: BoxDecoration(
+                border: Border(top: BorderSide(color: borderColor, width: 1.0)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      onSubmitted: (_) => _handleSendFollowUp(),
+                      decoration: InputDecoration(
+                        hintText: '追问本段细节 (Enter 发送)...',
+                        hintStyle: TextStyle(fontSize: 13.0, color: textSecondary),
+                        border: InputBorder.none,
+                        isDense: true,
+                      ),
+                      style: TextStyle(fontSize: 13.0, color: textPrimary),
+                    ),
                   ),
-                  style: TextStyle(fontSize: 13.0, color: textPrimary),
-                ),
+                  IconButton(
+                    icon: Icon(Icons.arrow_upward_rounded,
+                        size: 18.0, color: accentColor),
+                    onPressed:
+                        widget.session.isResponding ? null : _handleSendFollowUp,
+                  ),
+                ],
               ),
-              IconButton(
-                icon: Icon(Icons.arrow_upward_rounded,
-                    size: 18.0, color: accentColor),
-                onPressed: _isResponding ? null : _handleSendFollowUp,
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }

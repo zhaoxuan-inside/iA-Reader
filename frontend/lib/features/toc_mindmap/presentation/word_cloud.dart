@@ -31,6 +31,14 @@ class WordCloud extends StatelessWidget {
     final sorted = keywords.toList()
       ..sort((a, b) => b.score.compareTo(a.score));
 
+    // 空态（FEAT-009 REQ-004）：无可分词内容时诚实留白，不编造占位词
+    if (sorted.isEmpty) {
+      return Text(
+        '本文暂未提取到核心关键词。',
+        style: TextStyle(fontSize: 12.0, color: textSecondary, height: 1.5),
+      );
+    }
+
     return Wrap(
       spacing: 10.0,
       runSpacing: 8.0,

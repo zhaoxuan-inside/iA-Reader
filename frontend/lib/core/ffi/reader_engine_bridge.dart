@@ -87,6 +87,9 @@ class ReaderEngineBridge {
   // mock 应用配置（settings.*）：主题/上次书目等 GUI 偏好
   final Map<String, dynamic> _inMemorySettings = {};
 
+  // mock 续读进度（progress.*）：book_id → 进度快照
+  final Map<String, Map<String, dynamic>> _inMemoryProgress = {};
+
   // 流式伴读注册表 mock（task_17 D4）：start 即 done 的确定性快照
   final Map<String, Map<String, dynamic>> _inMemoryStreams = {};
 
@@ -98,6 +101,7 @@ class ReaderEngineBridge {
     _inMemoryDeletedBooks.clear();
     _inMemorySettings.clear();
     _inMemoryStreams.clear();
+    _inMemoryProgress.clear();
   }
 
   ReaderEngineBridge._({String? libraryPath}) : _libraryPath = libraryPath;
@@ -265,6 +269,7 @@ class ReaderEngineBridge {
           'partial': state['partial'],
           'done': state['done'],
           'offline': state['offline'],
+          'ttft_ms': state['ttft_ms'],
         },
         metrics: {'duration_ms': 1, 'timestamp': now},
       );
@@ -274,15 +279,18 @@ class ReaderEngineBridge {
     final text = payload['selected_text'] ?? '';
     final analysis = _mockAnalysis(tpl.toString(), text.toString(), '');
     final requestId = 'mock_stream_${now}_${_inMemoryStreams.length + 1}';
+    final threadId = payload['thread_id']?.toString() ??
+        'mock_thread_${now}_${_inMemoryStreams.length + 1}';
     _inMemoryStreams[requestId] = {
       'partial': analysis,
       'done': true,
       'offline': analysis.startsWith('【离线模式】'),
+      'ttft_ms': 2,
     };
     return InvokeEnvelope(
       code: 0,
       message: 'Started',
-      data: {'request_id': requestId},
+      data: {'request_id': requestId, 'thread_id': threadId},
       metrics: {'duration_ms': 2, 'timestamp': now},
     );
   }
@@ -474,6 +482,12 @@ class ReaderEngineBridge {
         data: {
           'book_id': 1,
           'title': '分布式系统高可靠存储与认知解析',
+          'meta': {
+            'id': 1,
+            'read_progress': 0.0,
+            'read_paragraph_index': 0,
+            'read_section_id': null,
+          },
           'sections': [
             {
               'id': 1,
@@ -537,6 +551,8 @@ class ReaderEngineBridge {
             'temperature': 0.7,
             'max_output_tokens': 2048,
             'system_prompt': '你是一个专业的全学科智能阅读伴读与学术解析助手。',
+            'timeout_ms': 60000,
+            'max_retries': 3,
           },
           'config_path': '~/.ai-reader/config/llm_config.json',
           'paths': {
@@ -567,6 +583,37 @@ class ReaderEngineBridge {
         message: 'success',
         data: {'ok': true, 'latency_ms': 12},
         metrics: {'duration_ms': 12, 'timestamp': now},
+      );
+    }
+
+    if (action == 'book.parse') {
+      // mock 通道不支持真实解析：显式报错而非假成功——
+      // 此前通用 echo 令演示模式下导入任意路径都"成功"并静默 fallback 到 bookId=1
+      return InvokeEnvelope(
+        code: 50001,
+        message: '演示模式不支持导入：请构建或安装原生引擎 (libreader_core) 后重试',
+        data: {},
+        metrics: {'duration_ms': 1, 'timestamp': now},
+      );
+    }
+
+    if (action == 'progress.save') {
+      _inMemoryProgress[payload['book_id']?.toString() ?? '0'] = Map<String, dynamic>.from(payload);
+      return InvokeEnvelope(
+        code: 0,
+        message: 'Saved',
+        data: {'status': 'saved'},
+        metrics: {'duration_ms': 1, 'timestamp': now},
+      );
+    }
+
+    if (action == 'progress.get') {
+      return InvokeEnvelope(
+        code: 0,
+        message: 'success',
+        data: Map<String, dynamic>.from(
+            _inMemoryProgress[payload['book_id']?.toString() ?? '0'] ?? {}),
+        metrics: {'duration_ms': 1, 'timestamp': now},
       );
     }
 

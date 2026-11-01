@@ -5,8 +5,7 @@ enum CognitiveTemplateType {
   general('通俗', 'general'),
   logic('逻辑', 'logic'),
   critical('批判', 'critical'),
-  term('术语', 'term'),
-  highlight('高亮', 'highlight');
+  term('术语', 'term');
 
   final String label;
   final String templateKey;

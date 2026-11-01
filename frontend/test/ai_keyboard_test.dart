@@ -70,12 +70,12 @@ void main() {
 
       expect(find.text('AI 键盘'), findsOneWidget);
       expect(find.text('作用域：选区「预写式日志」'), findsOneWidget);
-      for (final label in ['通俗', '逻辑', '批判', '术语']) {
+      for (final label in ['1 通俗', '2 逻辑', '3 批判', '4 术语']) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
       expect(find.text('认知伴读'), findsOneWidget);
 
-      await tester.tap(find.text('逻辑'));
+      await tester.tap(find.text('2 逻辑'));
       expect(chosen, CognitiveTemplateType.logic);
 
       await tester.tap(find.text('认知伴读'));

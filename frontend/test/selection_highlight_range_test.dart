@@ -56,8 +56,10 @@ void main() {
     expect(pointerPos.dy - pillRect.bottom, inExclusiveRange(0, 24),
         reason: '胶囊底边应贴近指针上方');
 
-    // 点高亮 → 子串内联着色
-    await tester.tap(find.text('高亮'));
+    // 胶囊「标注」→ 面板「应用」（默认高亮样式）→ 子串内联着色
+    await tester.tap(find.text('标注'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('应用'));
     await tester.pumpAndSettle();
 
     final editables =

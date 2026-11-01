@@ -85,18 +85,19 @@ class AiKeyboardPanel extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10.0),
-            // 理解模板键帽区
+            // 理解模板键帽区：数字键 1-4 直触（FEAT-010 REQ-003）
             Wrap(
               spacing: 8.0,
               runSpacing: 8.0,
               children: [
-                for (final tpl in [
-                  CognitiveTemplateType.general,
-                  CognitiveTemplateType.logic,
-                  CognitiveTemplateType.critical,
-                  CognitiveTemplateType.term,
+                for (final entry in const [
+                  (CognitiveTemplateType.general, '1'),
+                  (CognitiveTemplateType.logic, '2'),
+                  (CognitiveTemplateType.critical, '3'),
+                  (CognitiveTemplateType.term, '4'),
                 ])
-                  keycap(tpl.label, () => onTemplateSelected(tpl)),
+                  keycap('${entry.$2} ${entry.$1.label}',
+                      () => onTemplateSelected(entry.$1)),
               ],
             ),
             const SizedBox(height: 10.0),
