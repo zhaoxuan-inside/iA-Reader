@@ -1,2 +1,0 @@
-8de16bd632767d2777cf0d1f8f21633bbe951861fcad7d412ca98c47fa5bdc30  linux/ai-reader_0.0.15_amd64.deb
-f0b7cf2c3c4a1009b3c6640b1533f2a9861a758f0cacec76b8a21ac3d6d63c57  android/ai-reader_0.0.15_arm64_x64.apk

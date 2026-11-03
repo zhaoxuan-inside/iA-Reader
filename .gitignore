@@ -19,3 +19,8 @@ frontend/android/key.properties
 frontend/android/.gradle/
 frontend/android/local.properties
 *.jks
+
+# IDE 与测试诊断产物（不入库）
+frontend/test/failures/
+frontend/.idea/
+*.iml
