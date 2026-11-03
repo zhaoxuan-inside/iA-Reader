@@ -47,23 +47,28 @@ def generate_manifest(version: str):
     }
     checksums_lines = []
 
-    # 只登记真实产物文件；排除清单自身
-    for pkg_file in sorted(LINUX_OUT.glob("*")):
-        if pkg_file.name in ("SHA256SUMS.txt", "PACKAGE_MANIFEST.json"):
+    # 只登记真实产物文件；排除清单自身；平台按产物目录归因
+    platform_by_dir = {"linux": "linux-x64", "android": "android"}
+    for sub_dir, platform in platform_by_dir.items():
+        out_dir = OUTPUT / sub_dir
+        if not out_dir.is_dir():
             continue
-        if not pkg_file.is_file():
-            continue
-        sha = sha256_file(pkg_file)
-        rel_path = pkg_file.relative_to(OUTPUT).as_posix()
-        manifest["packages"].append(
-            {
-                "file": rel_path,
-                "size_bytes": pkg_file.stat().st_size,
-                "sha256": sha,
-                "platform": "linux-x64",
-            }
-        )
-        checksums_lines.append(f"{sha}  {rel_path}")
+        for pkg_file in sorted(out_dir.glob("*")):
+            if pkg_file.name in ("SHA256SUMS.txt", "PACKAGE_MANIFEST.json"):
+                continue
+            if not pkg_file.is_file():
+                continue
+            sha = sha256_file(pkg_file)
+            rel_path = pkg_file.relative_to(OUTPUT).as_posix()
+            manifest["packages"].append(
+                {
+                    "file": rel_path,
+                    "size_bytes": pkg_file.stat().st_size,
+                    "sha256": sha,
+                    "platform": platform,
+                }
+            )
+            checksums_lines.append(f"{sha}  {rel_path}")
 
     (OUTPUT / "SHA256SUMS.txt").write_text(
         "\n".join(checksums_lines) + "\n", encoding="utf-8"

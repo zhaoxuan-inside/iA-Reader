@@ -30,6 +30,7 @@ make check      # lint（clippy -D warnings + flutter analyze）+ 全量测试
 make test       # cargo test + flutter test + python 契约/端到端/CLI/规格
 make bench      # 性能 SLA（10万字解析<1.5s / NLP<200ms / 离线卡片<10ms）
 make build-deb  # Linux deb + 产物清单/校验和同步
+make build-apk  # Android APK（arm64+x86_64，需本机 Android 工具链）
 ```
 
 ## 目录

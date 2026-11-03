@@ -171,6 +171,15 @@ class ReaderEngineBridge {
         'reader_core.dll',
         'backend/target/release/reader_core.dll',
       ]);
+    } else if (Platform.isAndroid) {
+      // Android：引擎 .so 随 APK 打包于 nativeLibraryDir（jniLibs），
+      // dlopen 按裸 soname 解析——不走 File.existsSync（APK 内路径不可见）
+      try {
+        ffi.DynamicLibrary.open('libreader_core.so');
+        return 'libreader_core.so';
+      } catch (_) {
+        return null;
+      }
     }
 
     for (final path in candidatePaths) {

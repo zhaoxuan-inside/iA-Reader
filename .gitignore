@@ -12,3 +12,10 @@ target/
 
 # 打包产物\(output/)
 output/
+
+# Android 构建注入产物与签名（构建期生成，不入库）
+frontend/android/app/src/main/jniLibs/
+frontend/android/key.properties
+frontend/android/.gradle/
+frontend/android/local.properties
+*.jks
